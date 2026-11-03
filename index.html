@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0d">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Kitchen Radio</title>
+<style>
+  :root {
+    --bg: #0a0a0d;
+    --panel: #15151b;
+    --panel2: #20202a;
+    --line: #2a2a34;
+    --text: #f4f1ea;
+    --muted: #9b98a6;
+    --accent: #f5a524;
+    --danger: #e5484d;
+    --ok: #3fb950;
+    --radius: 18px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { min-height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  body { overflow-x: hidden; user-select: none; -webkit-user-select: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; }
+  input, select, textarea { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; width: 100%; user-select: text; -webkit-user-select: text; }
+  [hidden] { display: none !important; }
+
+  #app { padding: 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "head" "moods" "now" "timers";
+    transform: translate(var(--sx, 0px), var(--sy, 0px)); transition: filter .8s, transform 3s; }
+  body.dim #app { filter: brightness(.35); }
+
+  header { grid-area: head; display: flex; align-items: center; gap: 12px; }
+  .clock { font-size: clamp(44px, 12vw, 76px); font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .ampm { font-size: .35em; color: var(--muted); margin-left: 4px; font-weight: 600; letter-spacing: 0; }
+  .hello { flex: 1; min-width: 0; }
+  .greet { font-size: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .date { color: var(--muted); font-size: 15px; margin-top: 2px; }
+  .iconbtn { width: 50px; height: 50px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 22px; flex: none; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin-bottom: 10px; }
+
+  #moods { grid-area: moods; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mood { position: relative; text-align: left; padding: 14px; border-radius: var(--radius); min-height: 92px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--c) 30%, var(--panel)), var(--panel));
+    border: 2px solid transparent; display: flex; flex-direction: column; justify-content: flex-end; gap: 3px; overflow: hidden;
+    transition: transform .1s; }
+  .mood:active { transform: scale(.97); }
+  .mood .emoji { position: absolute; top: 10px; right: 12px; font-size: 28px; }
+  .mood .mname { font-size: 18px; font-weight: 700; line-height: 1.15; padding-right: 36px; }
+  .mood .msub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mood.active { border-color: var(--c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent); }
+  .mood.empty .mname, .mood.empty .emoji { opacity: .5; }
+
+  .card { background: var(--panel); border-radius: var(--radius); padding: 14px; }
+  #now { grid-area: now; }
+  .playerwrap { width: 100%; aspect-ratio: 16 / 9; max-height: 34vh; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
+  .playerwrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 16px; font-size: 16px; }
+  .placeholder b { display: block; font-size: 40px; margin-bottom: 6px; }
+  .np-meta { margin-top: 12px; min-height: 58px; }
+  .np-mood { font-size: 12px; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .np-title { font-size: 18px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .np-artist { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .controls { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; }
+  .ctl { width: min(60px, 14vw); height: min(60px, 14vw); border-radius: 50%; background: var(--panel2); font-size: 22px; display: grid; place-items: center; flex: none; }
+  .ctl.big { width: min(78px, 19vw); height: min(78px, 19vw); background: var(--accent); color: #1a1200; font-size: 30px; }
+  .ctl:active { transform: scale(.94); }
+  .vol { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .vol input { flex: 1; padding: 0; height: 36px; background: none; border: 0; accent-color: var(--accent); }
+  .vol .ctl { width: 48px; height: 48px; font-size: 22px; }
+  .vol output { width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  #timers { grid-area: timers; }
+  .tq { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 12px 0; width: 64px; border-radius: 999px; background: var(--panel2); font-weight: 700; font-size: 16px; }
+  .chip:active { background: var(--accent); color: #1a1200; }
+  .custom { display: flex; gap: 8px; margin-top: 10px; }
+  .custom input { width: 110px; flex: none; }
+  .custom button { padding: 0 18px; border-radius: 10px; background: var(--panel2); font-weight: 600; }
+  #timerList:not(:empty) { margin-top: 12px; }
+  .timer { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); position: relative; }
+  .timer .rem { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 112px; }
+  .timer .lbl { flex: 1; color: var(--muted); font-size: 15px; }
+  .timer .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); border-radius: 2px; }
+  .timer button { width: 48px; height: 48px; border-radius: 50%; background: var(--panel2); font-weight: 700; }
+
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; z-index: 50; padding: 24px; }
+  #start { background: rgba(10, 10, 13, .94); }
+  #start .big { font-size: 64px; }
+  #start h1 { font-size: 28px; margin: 10px 0 6px; }
+  #start p { color: var(--muted); }
+  #alarm { background: var(--danger); animation: pulse .9s infinite alternate; }
+  #alarm .big { font-size: 80px; }
+  #alarm h1 { font-size: 34px; margin: 8px 0; }
+  @keyframes pulse { to { background: color-mix(in srgb, var(--danger) 60%, black); } }
+
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line);
+    padding: 12px 18px; border-radius: 12px; z-index: 60; max-width: calc(100% - 32px); font-size: 15px; }
+
+  dialog { border: 0; padding: 0; background: var(--bg); color: var(--text); width: 100%; max-width: 640px; max-height: 100%;
+    height: 100%; margin: auto; }
+  @media (min-width: 700px) { dialog { height: auto; max-height: 92vh; border-radius: var(--radius); } }
+  dialog::backdrop { background: rgba(0, 0, 0, .7); }
+  .dlg { padding: 16px; display: grid; gap: 14px; }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--bg); padding: 4px 0 8px; z-index: 1; }
+  .dlg-head h1 { font-size: 22px; }
+  .dlg-head .actions { display: flex; gap: 8px; }
+  .btn { padding: 12px 18px; border-radius: 10px; background: var(--panel2); font-weight: 600; }
+  .btn.primary { background: var(--accent); color: #1a1200; }
+  .srow { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 8px; }
+  .srow-top { display: flex; gap: 8px; }
+  .srow-top .s-emoji { width: 56px; flex: none; text-align: center; }
+  .srow-top .s-del { width: 46px; flex: none; border-radius: 10px; background: var(--panel2); }
+  .s-msg { font-size: 13px; color: var(--muted); min-height: 1em; }
+  .s-msg.ok { color: var(--ok); } .s-msg.bad { color: var(--danger); }
+  .field { display: grid; gap: 6px; }
+  .field label { font-size: 14px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  details { border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details textarea { margin-top: 10px; height: 120px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .hint { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+  @media (orientation: landscape) and (min-width: 700px) {
+    #app { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "head now" "moods now" "timers now"; align-items: start; }
+    #moods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .playerwrap { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="clock" id="clock">--:--</div>
+    <div class="hello">
+      <div class="greet" id="greet">Hello</div>
+      <div class="date" id="date"></div>
+    </div>
+    <button class="iconbtn" id="btnSettings" aria-label="Settings">⚙️</button>
+  </header>
+
+  <section id="moods" aria-label="Moods"></section>
+
+  <section id="now" class="card" aria-label="Now playing">
+    <div class="playerwrap">
+      <div id="yt"></div>
+      <div class="placeholder" id="placeholder"><div><b>🎶</b>Pick a mood to start the music</div></div>
+    </div>
+    <div class="np-meta">
+      <div class="np-mood" id="npMood">&nbsp;</div>
+      <div class="np-title" id="npTitle">Nothing playing</div>
+      <div class="np-artist" id="npArtist"></div>
+    </div>
+    <div class="controls">
+      <button class="ctl" id="btnStop" aria-label="Stop">⏹</button>
+      <button class="ctl" id="btnPrev" aria-label="Previous song">⏮</button>
+      <button class="ctl big" id="btnPlay" aria-label="Play or pause">▶</button>
+      <button class="ctl" id="btnNext" aria-label="Next song">⏭</button>
+      <button class="ctl" id="btnShuffle" aria-label="Shuffle again">🔀</button>
+    </div>
+    <div class="vol">
+      <button class="ctl" id="volDown" aria-label="Softer">−</button>
+      <input type="range" id="vol" min="0" max="100" step="1" aria-label="Volume">
+      <button class="ctl" id="volUp" aria-label="Louder">+</button>
+      <output id="volOut">60</output>
+    </div>
+  </section>
+
+  <section id="timers" class="card" aria-label="Timers">
+    <h2>Timers</h2>
+    <div class="tq" id="quickTimers"></div>
+    <div class="custom">
+      <input type="number" id="customMin" min="1" max="240" inputmode="numeric" placeholder="Minutes">
+      <button id="customGo">Start</button>
+    </div>
+    <div id="timerList"></div>
+  </section>
+</div>
+
+<div class="overlay" id="start">
+  <div>
+    <div class="big">🍳</div>
+    <h1>Kitchen Radio</h1>
+    <p>Tap anywhere to start</p>
+  </div>
+</div>
+
+<div class="overlay" id="alarm" hidden>
+  <div>
+    <div class="big">⏰</div>
+    <h1 id="alarmText">Timer done</h1>
+    <p>Tap anywhere to stop</p>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<dialog id="settings">
+  <form class="dlg" method="dialog" id="settingsForm">
+    <div class="dlg-head">
+      <h1>Settings</h1>
+      <div class="actions">
+        <button type="button" class="btn" id="sCancel">Cancel</button>
+        <button type="button" class="btn primary" id="sSave">Save</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="sName">Name for the greeting (optional)</label>
+      <input id="sName" placeholder="e.g. Priya">
+    </div>
+
+    <h2>Moods &amp; playlists</h2>
+    <p class="hint">In YouTube Music, open a playlist → Share → Copy link, then paste it here.
+      Set the playlist to <b>Public</b> or <b>Unlisted</b>. Private playlists and “Liked music” won’t play outside YouTube.</p>
+    <div id="sMoods" style="display:grid;gap:10px"></div>
+    <button type="button" class="btn" id="sAdd">+ Add a mood</button>
+
+    <h2>“Just play” picks</h2>
+    <div class="grid2" id="sSchedule"></div>
+
+    <div class="field">
+      <label for="sAuto">Fade out the music if nobody touches the screen for</label>
+      <select id="sAuto">
+        <option value="0">Never</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="90">1½ hours</option>
+        <option value="120">2 hours</option>
+      </select>
+    </div>
+
+    <details>
+      <summary>Backup / restore settings</summary>
+      <textarea id="sJson" spellcheck="false"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn" id="sCopy">Copy</button>
+        <button type="button" class="btn" id="sLoad">Load from box</button>
+        <button type="button" class="btn" id="sReset">Reset all</button>
+      </div>
+    </details>
+  </form>
+</dialog>
+
+<script>
+'use strict';
+
+/* ---------- config & storage ---------- */
+
+const DEFAULT_MOODS = [
+  { id: 'brindavan', emoji: '🪈', color: '#f5a524', name: 'Brindavan Bhajans', sub: 'Radhe Radhe', url: '', list: '' },
+  { id: 'abhang',    emoji: '🚩', color: '#f76b15', name: 'Marathi Abhangs',   sub: 'Vitthal Vitthal', url: '', list: '' },
+  { id: 'melody',    emoji: '🎵', color: '#e93d82', name: 'Bollywood Melody',  sub: 'Arijit · Sachet–Parampara', url: '', list: '' },
+  { id: 'vijay',     emoji: '🔥', color: '#e5484d', name: 'Vijay Hits',        sub: 'Kollywood', url: '', list: '' },
+  { id: 'fav',       emoji: '❤️', color: '#8e4ec6', name: 'Favourites',        sub: 'Our liked mix', url: '', list: '' },
+];
+const COLORS = ['#f5a524', '#f76b15', '#e93d82', '#e5484d', '#8e4ec6', '#3e63dd', '#12a594', '#46a758'];
+const SLOTS = [['morning', 'Morning (5–11)'], ['afternoon', 'Afternoon (11–4)'], ['evening', 'Evening (4–9)'], ['night', 'Night (9–5)']];
+const DEFAULT_CFG = {
+  name: '', volume: 60, autoStopMin: 0,
+  schedule: { morning: 'brindavan', afternoon: 'melody', evening: 'melody', night: 'fav' },
+  moods: DEFAULT_MOODS,
+};
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('kr.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('kr.' + k, JSON.stringify(v)); } catch {} },
+};
+
+function loadCfg() {
+  const s = store.get('cfg', null);
+  const base = structuredClone(DEFAULT_CFG);
+  if (!s) return base;
+  return { ...base, ...s, schedule: { ...base.schedule, ...(s.schedule || {}) }, moods: Array.isArray(s.moods) ? s.moods : base.moods };
+}
+let cfg = loadCfg();
+const saveCfg = () => store.set('cfg', cfg);
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let toastTimer;
+function toast(msg, ms = 3500) {
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
+}
+
+/* ---------- clock & greeting ---------- */
+
+function slot(h = new Date().getHours()) {
+  if (h >= 5 && h < 11) return 'morning';
+  if (h >= 11 && h < 16) return 'afternoon';
+  if (h >= 16 && h < 21) return 'evening';
+  return 'night';
+}
+let lastSlot = null;
+function tickClock() {
+  const d = new Date();
+  const h = d.getHours() % 12 || 12, m = String(d.getMinutes()).padStart(2, '0');
+  $('#clock').innerHTML = `${h}:${m}<span class="ampm">${d.getHours() < 12 ? 'am' : 'pm'}</span>`;
+  $('#date').textContent = d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+  const s = slot(d.getHours());
+  const word = { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening', night: 'Hello' }[s];
+  $('#greet').textContent = cfg.name ? `${word}, ${cfg.name}` : word;
+  if (s !== lastSlot) { lastSlot = s; renderMoods(); }
+}
+
+/* ---------- moods ---------- */
+
+let currentMood = null;
+
+function pickJustPlay() {
+  const id = cfg.schedule[slot()];
+  return cfg.moods.find((m) => m.id === id && m.list) || cfg.moods.find((m) => m.list) || null;
+}
+
+function renderMoods() {
+  const el = $('#moods');
+  el.innerHTML = '';
+  for (const m of cfg.moods) {
+    const b = document.createElement('button');
+    b.className = 'mood' + (m.list ? '' : ' empty') + (currentMood?.id === m.id ? ' active' : '');
+    b.style.setProperty('--c', m.color || '#f5a524');
+    b.innerHTML = `<span class="emoji">${esc(m.emoji)}</span><span class="mname">${esc(m.name)}</span>` +
+      `<span class="msub">${m.list ? esc(m.sub) : 'Tap to add a playlist'}</span>`;
+    b.onclick = () => (m.list ? playMood(m) : openSettings(m.id));
+    el.append(b);
+  }
+  const jp = pickJustPlay();
+  const b = document.createElement('button');
+  b.className = 'mood' + (jp ? '' : ' empty');
+  b.style.setProperty('--c', '#12a594');
+  b.innerHTML = `<span class="emoji">✨</span><span class="mname">Just play</span>` +
+    `<span class="msub">${jp ? esc(jp.name) : 'Add playlists first'}</span>`;
+  b.onclick = () => { const m = pickJustPlay(); m ? playMood(m) : openSettings(); };
+  el.append(b);
+}
+
+/* ---------- YouTube player ---------- */
+
+let player = null, playerReady = false, pendingMood = null, shuffleOnCue = false, cueFallback = null;
+let isPlaying = false, errCount = 0;
+const S = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('yt', {
+    width: '100%', height: '100%',
+    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+    events: {
+      onReady: () => { playerReady = true; applyVolume(); if (pendingMood) { const m = pendingMood; pendingMood = null; playMood(m); } },
+      onStateChange: onPlayerState,
+      onError: onPlayerError,
+    },
+  });
+};
+function loadYouTube() {
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  s.onerror = () => toast('Could not reach YouTube. Check the Wi-Fi.', 6000);
+  document.head.append(s);
+}
+
+function playMood(m) {
+  currentMood = m;
+  store.set('lastMood', m.id);
+  renderMoods();
+  $('#npMood').textContent = m.name;
+  $('#npTitle').textContent = 'Loading…';
+  $('#npArtist').textContent = '';
+  if (!playerReady) { pendingMood = m; return; }
+  $('#placeholder').hidden = true;
+  errCount = 0;
+  cancelFade(); duckFactor = 1; applyVolume();
+  shuffleOnCue = true;
+  player.cuePlaylist({ listType: 'playlist', list: m.list, index: 0 });
+  clearTimeout(cueFallback);
+  cueFallback = setTimeout(() => { if (shuffleOnCue) { shuffleOnCue = false; player.playVideo(); } }, 4000);
+}
+
+function startShuffled() {
+  const pl = player.getPlaylist() || [];
+  player.setShuffle(true);
+  player.setLoop(true);
+  player.playVideoAt(pl.length ? Math.floor(Math.random() * pl.length) : 0);
+}
+
+function onPlayerState(e) {
+  if (e.data === S.CUED && shuffleOnCue) {
+    shuffleOnCue = false; clearTimeout(cueFallback);
+    startShuffled();
+    return;
+  }
+  isPlaying = e.data === S.PLAYING || e.data === S.BUFFERING;
+  $('#btnPlay').textContent = isPlaying ? '⏸' : '▶';
+  if (e.data === S.PLAYING) {
+    errCount = 0;
+    const d = player.getVideoData?.() || {};
+    $('#npTitle').textContent = d.title || 'Playing';
+    $('#npArtist').textContent = (d.author || '').replace(/ - Topic$/, '');
+  }
+}
+
+function onPlayerError(e) {
+  errCount++;
+  if (errCount > 8) {
+    toast('Too many songs in this playlist can’t play here. Check the playlist is Public or Unlisted.', 7000);
+    $('#npTitle').textContent = 'This playlist won’t play';
+    return;
+  }
+  // 101/150: the uploader blocked playback outside YouTube. Skip it.
+  if (e.data === 101 || e.data === 150) toast('Skipped a song that only plays inside YouTube');
+  setTimeout(() => player.nextVideo(), 700);
+}
+
+function togglePlay() {
+  if (!playerReady) return;
+  if (!currentMood) { const m = pickJustPlay(); return m ? playMood(m) : openSettings(); }
+  if (isPlaying) player.pauseVideo();
+  else { cancelFade(); duckFactor = 1; applyVolume(); player.playVideo(); }
+}
+function stopMusic() {
+  if (!playerReady) return;
+  player.stopVideo();
+  currentMood = null; renderMoods();
+  $('#placeholder').hidden = false;
+  $('#npMood').innerHTML = '&nbsp;'; $('#npTitle').textContent = 'Nothing playing'; $('#npArtist').textContent = '';
+}
+
+/* ---------- volume, ducking & fades ---------- */
+
+let duckFactor = 1, fadeTimer = null;
+function applyVolume() {
+  $('#vol').value = cfg.volume; $('#volOut').textContent = cfg.volume;
+  if (playerReady) player.setVolume(Math.round(cfg.volume * duckFactor));
+}
+function setVolume(v) { cfg.volume = Math.max(0, Math.min(100, Math.round(v))); saveCfg(); applyVolume(); }
+function cancelFade() { clearInterval(fadeTimer); fadeTimer = null; }
+// Smoothly move duckFactor to `target`. Used by timers now, and later by sound detection.
+function fadeTo(target, ms = 800, done) {
+  cancelFade();
+  const from = duckFactor, t0 = performance.now();
+  fadeTimer = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / ms);
+    duckFactor = from + (target - from) * k;
+    applyVolume();
+    if (k >= 1) { cancelFade(); done?.(); }
+  }, 50);
+}
+
+/* ---------- timers ---------- */
+
+const QUICK = [1, 2, 3, 5, 10, 15, 20, 30];
+let timers = store.get('timers', []).filter((t) => t.end > Date.now() - 60000);
+let actx = null, alarmTimer = null, alarmStarted = 0;
+
+function fmt(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
+}
+const saveTimers = () => store.set('timers', timers);
+
+function addTimer(min) {
+  if (!(min > 0)) return;
+  timers.push({ id: Date.now() + Math.random(), total: min * 60000, end: Date.now() + min * 60000, label: `${min} minute${min === 1 ? '' : 's'}` });
+  saveTimers(); renderTimers();
+}
+function renderTimers() {
+  const el = $('#timerList');
+  el.innerHTML = '';
+  for (const t of timers) {
+    const row = document.createElement('div');
+    row.className = 'timer'; row.dataset.id = t.id;
+    row.innerHTML = `<span class="rem"></span><span class="lbl">${esc(t.label)}</span>` +
+      `<button aria-label="Add one minute">+1</button><button aria-label="Cancel timer">✕</button><span class="bar"></span>`;
+    const [plus, cancel] = row.querySelectorAll('button');
+    plus.onclick = () => { t.end += 60000; t.total += 60000; t.fired = false; saveTimers(); tickTimers(); };
+    cancel.onclick = () => { timers = timers.filter((x) => x !== t); saveTimers(); renderTimers(); };
+    el.append(row);
+  }
+  tickTimers();
+}
+function tickTimers() {
+  const now = Date.now();
+  for (const t of timers) {
+    const row = document.querySelector(`.timer[data-id="${t.id}"]`);
+    const left = t.end - now;
+    if (row) {
+      row.querySelector('.rem').textContent = left > 0 ? fmt(left) : 'Done';
+      row.querySelector('.bar').style.width = `${Math.max(0, Math.min(100, (left / t.total) * 100))}%`;
+    }
+    if (left <= 0 && !t.fired) { t.fired = true; saveTimers(); ringFor(t); }
+  }
+}
+
+function ensureAudio() {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {}
+}
+function beep(t, f) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine'; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.7, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  o.connect(g).connect(actx.destination);
+  o.start(t); o.stop(t + 0.22);
+}
+function say(text) {
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'en-IN'; speechSynthesis.speak(u); } catch {}
+}
+function ringFor(t) {
+  const done = timers.filter((x) => x.fired).map((x) => x.label);
+  $('#alarmText').textContent = done.length > 1 ? `${done.length} timers done` : `${t.label} timer done`;
+  $('#alarm').hidden = false;
+  if (alarmTimer) return;
+  ensureAudio();
+  fadeTo(0.15, 600);
+  alarmStarted = Date.now();
+  const ring = () => {
+    if (actx) { const n = actx.currentTime; beep(n, 880); beep(n + 0.25, 880); beep(n + 0.5, 1175); }
+    if (Date.now() - alarmStarted > 3 * 60000) dismissAlarm();
+  };
+  ring();
+  alarmTimer = setInterval(ring, 1600);
+  setTimeout(() => say(`Your ${t.label} timer is done`), 900);
+}
+function dismissAlarm() {
+  clearInterval(alarmTimer); alarmTimer = null;
+  $('#alarm').hidden = true;
+  timers = timers.filter((t) => !t.fired);
+  saveTimers(); renderTimers();
+  fadeTo(1, 1500);
+}
+
+/* ---------- screen: wake lock, dimming, burn-in shift, auto-stop ---------- */
+
+let started = false, lastTouch = Date.now(), wakeLock = null;
+async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (started && document.visibilityState === 'visible') keepAwake(); });
+document.addEventListener('pointerdown', () => { lastTouch = Date.now(); document.body.classList.remove('dim'); }, true);
+
+setInterval(() => {
+  const idle = Date.now() - lastTouch;
+  if (idle > 3 * 60000 && !alarmTimer) document.body.classList.add('dim');
+  if (cfg.autoStopMin > 0 && isPlaying && !fadeTimer && idle > cfg.autoStopMin * 60000) {
+    fadeTo(0, 10000, () => { player.pauseVideo(); duckFactor = 1; applyVolume(); });
+  }
+}, 10000);
+// Nudge the whole page a couple of pixels now and then so the static layout doesn't burn into an old AMOLED screen.
+setInterval(() => {
+  const r = () => `${Math.round(Math.random() * 6 - 3)}px`;
+  document.documentElement.style.setProperty('--sx', r());
+  document.documentElement.style.setProperty('--sy', r());
+}, 120000);
+
+/* ---------- settings ---------- */
+
+let draft = null;
+const dlg = $('#settings');
+
+function parseList(s) {
+  s = (s || '').trim();
+  if (!s) return '';
+  try { const l = new URL(s).searchParams.get('list'); if (l) return l; } catch {}
+  return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : '';
+}
+function checkRow(row) {
+  const v = row.querySelector('.s-list').value.trim(), msg = row.querySelector('.s-msg');
+  const id = parseList(v);
+  msg.className = 's-msg';
+  if (!v) msg.textContent = '';
+  else if (id === 'LM') { msg.textContent = '“Liked music” can’t play outside YouTube. Copy the songs into a normal playlist.'; msg.classList.add('bad'); }
+  else if (id) { msg.textContent = '✓ Playlist link looks good'; msg.classList.add('ok'); }
+  else { msg.textContent = 'That doesn’t look like a playlist link'; msg.classList.add('bad'); }
+}
+
+function syncDraft() {
+  if (!draft) return;
+  draft.name = $('#sName').value.trim();
+  draft.autoStopMin = +$('#sAuto').value;
+  document.querySelectorAll('#sMoods .srow').forEach((row) => {
+    const m = draft.moods[+row.dataset.i];
+    m.emoji = row.querySelector('.s-emoji').value.trim() || '🎵';
+    m.name = row.querySelector('.s-name').value.trim() || 'Untitled';
+    m.sub = row.querySelector('.s-sub').value.trim();
+    m.url = row.querySelector('.s-list').value.trim();
+    m.list = parseList(m.url);
+    if (m.list === 'LM') m.list = '';
+  });
+  document.querySelectorAll('#sSchedule select').forEach((sel) => (draft.schedule[sel.name] = sel.value));
+}
+
+function renderSettings(focusId) {
+  $('#sName').value = draft.name;
+  $('#sAuto').value = String(draft.autoStopMin);
+  const box = $('#sMoods');
+  box.innerHTML = draft.moods.map((m, i) => `
+    <fieldset class="srow" data-i="${i}">
+      <div class="srow-top">
+        <input class="s-emoji" value="${esc(m.emoji)}" maxlength="4" aria-label="Emoji">
+        <input class="s-name" value="${esc(m.name)}" placeholder="Mood name" aria-label="Mood name">
+        <button type="button" class="s-del" aria-label="Remove mood">🗑</button>
+      </div>
+      <input class="s-sub" value="${esc(m.sub)}" placeholder="Small line, e.g. Arijit · Sachet–Parampara" aria-label="Subtitle">
+      <input class="s-list" value="${esc(m.url || m.list)}" placeholder="Paste playlist link" inputmode="url" aria-label="Playlist link">
+      <small class="s-msg"></small>
+    </fieldset>`).join('');
+  box.querySelectorAll('.srow').forEach((row) => {
+    checkRow(row);
+    row.querySelector('.s-list').addEventListener('input', () => checkRow(row));
+    row.querySelector('.s-del').onclick = () => {
+      syncDraft();
+      draft.moods.splice(+row.dataset.i, 1);
+      renderSettings();
+    };
+  });
+  $('#sSchedule').innerHTML = SLOTS.map(([k, label]) => `
+    <div class="field"><label>${label}</label>
+      <select name="${k}">${draft.moods.map((m) => `<option value="${esc(m.id)}"${draft.schedule[k] === m.id ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+    </div>`).join('');
+  $('#sJson').value = JSON.stringify(draft, null, 1);
+  if (focusId) {
+    const i = draft.moods.findIndex((m) => m.id === focusId);
+    const input = box.querySelectorAll('.s-list')[i];
+    if (input) setTimeout(() => { input.scrollIntoView({ block: 'center' }); input.focus(); }, 50);
+  }
+}
+
+function openSettings(focusId) {
+  draft = structuredClone(cfg);
+  renderSettings(focusId);
+  dlg.showModal();
+}
+
+$('#sAdd').onclick = () => {
+  syncDraft();
+  draft.moods.push({ id: 'm' + Date.now(), emoji: '🎵', color: COLORS[draft.moods.length % COLORS.length], name: 'New mood', sub: '', url: '', list: '' });
+  renderSettings(draft.moods.at(-1).id);
+};
+$('#sCancel').onclick = () => { draft = null; dlg.close(); };
+$('#sSave').onclick = () => {
+  syncDraft();
+  cfg = draft; draft = null;
+  saveCfg(); dlg.close();
+  if (currentMood) currentMood = cfg.moods.find((m) => m.id === currentMood.id) || null;
+  renderMoods(); tickClock();
+  toast('Saved');
+};
+$('#sCopy').onclick = async () => {
+  syncDraft(); $('#sJson').value = JSON.stringify(draft, null, 1);
+  try { await navigator.clipboard.writeText($('#sJson').value); toast('Copied'); } catch { $('#sJson').select(); }
+};
+$('#sLoad').onclick = () => {
+  try {
+    const d = JSON.parse($('#sJson').value);
+    if (!Array.isArray(d.moods)) throw 0;
+    draft = { ...structuredClone(DEFAULT_CFG), ...d };
+    renderSettings(); toast('Loaded. Press Save to keep it.');
+  } catch { toast('That text isn’t a valid backup'); }
+};
+$('#sReset').onclick = () => {
+  if (!confirm('Reset all moods and settings?')) return;
+  draft = structuredClone(DEFAULT_CFG); renderSettings();
+};
+
+/* ---------- wiring ---------- */
+
+$('#btnSettings').onclick = () => openSettings();
+$('#btnPlay').onclick = togglePlay;
+$('#btnStop').onclick = stopMusic;
+$('#btnNext').onclick = () => playerReady && currentMood && player.nextVideo();
+$('#btnPrev').onclick = () => playerReady && currentMood && player.previousVideo();
+$('#btnShuffle').onclick = () => playerReady && currentMood && startShuffled();
+$('#vol').oninput = (e) => setVolume(+e.target.value);
+$('#volDown').onclick = () => setVolume(cfg.volume - 10);
+$('#volUp').onclick = () => setVolume(cfg.volume + 10);
+$('#quickTimers').innerHTML = QUICK.map((m) => `<button class="chip" data-m="${m}">${m}m</button>`).join('');
+$('#quickTimers').onclick = (e) => { const m = +e.target.dataset?.m; if (m) addTimer(m); };
+$('#customGo').onclick = () => { const v = +$('#customMin').value; if (v > 0) { addTimer(v); $('#customMin').value = ''; $('#customMin').blur(); } };
+$('#alarm').onclick = dismissAlarm;
+$('#start').onclick = () => {
+  started = true;
+  $('#start').hidden = true;
+  ensureAudio();
+  keepAwake();
+  document.documentElement.requestFullscreen?.().catch(() => {});
+};
+
+tickClock();
+renderMoods();
+renderTimers();
+applyVolume();
+loadYouTube();
+setInterval(tickClock, 1000);
+setInterval(tickTimers, 250);
+</script>
+</body>
+</html>
