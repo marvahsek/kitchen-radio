@@ -34,13 +34,32 @@
     transform: translate(var(--sx, 0px), var(--sy, 0px)); transition: filter .8s, transform 3s; }
   body.dim #app { filter: brightness(.35); }
 
-  header { grid-area: head; display: flex; align-items: center; gap: 12px; }
-  .clock { font-size: clamp(44px, 12vw, 76px); font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  header { grid-area: head; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .clock { font-size: clamp(40px, 11vw, 76px); font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
   .ampm { font-size: .35em; color: var(--muted); margin-left: 4px; font-weight: 600; letter-spacing: 0; }
   .hello { flex: 1; min-width: 0; }
-  .greet { font-size: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .greet { font-size: 18px; font-weight: 600; line-height: 1.2; }
   .date { color: var(--muted); font-size: 15px; margin-top: 2px; }
   .iconbtn { width: 50px; height: 50px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 22px; flex: none; }
+  .vhint { flex-basis: 100%; color: var(--accent); font-size: 15px; font-weight: 600; min-height: 1.2em; }
+  .mic-off { opacity: .45; }
+  .mic-ready { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 55%, transparent); }
+  .mic-loading { animation: blink 1s infinite alternate; }
+  .mic-listening { background: var(--accent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .mic-error { box-shadow: 0 0 0 3px var(--danger); }
+  @keyframes blink { to { opacity: .35; } }
+
+  #listen { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 40; background: var(--panel2); border: 2px solid var(--accent);
+    border-radius: 22px; padding: 18px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; align-items: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .6); }
+  #listen .lmic { font-size: 40px; grid-row: span 3; }
+  #listen .ltitle { font-size: 24px; font-weight: 700; }
+  #listen .lheard { font-size: 22px; color: var(--accent); min-height: 1.2em; }
+  #listen .lhint { font-size: 14px; color: var(--muted); line-height: 1.4; }
+  #listen .llevel { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  #listen .llevel span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .08s; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; }
+  .check input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: var(--accent); }
 
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin-bottom: 10px; }
 
@@ -141,7 +160,9 @@
       <div class="greet" id="greet">Hello</div>
       <div class="date" id="date"></div>
     </div>
+    <button class="iconbtn" id="btnMic" aria-label="Voice">🎙️</button>
     <button class="iconbtn" id="btnSettings" aria-label="Settings">⚙️</button>
+    <div class="vhint" id="voiceHint"></div>
   </header>
 
   <section id="moods" aria-label="Moods"></section>
@@ -184,7 +205,17 @@
 
 <div class="overlay" id="start">
   <div>
-    <div class="big">🍳</div>
+    <svg class="dosa" viewBox="0 0 160 100" width="176" height="110" role="img" aria-label="A folded dosa on a tava">
+      <path d="M58 14c-4 6 4 9 0 15M74 10c-4 6 4 9 0 15M90 14c-4 6 4 9 0 15" fill="none" stroke="#9b98a6" stroke-width="2.5" stroke-linecap="round" opacity=".7"/>
+      <rect x="124" y="60" width="34" height="9" rx="4.5" fill="#7a5230"/>
+      <ellipse cx="70" cy="66" rx="60" ry="22" fill="#1f1f25"/>
+      <ellipse cx="70" cy="63" rx="56" ry="18" fill="#34343c"/>
+      <path d="M22 62 Q70 22 120 58 Q70 74 22 62 Z" fill="#e9a23b" stroke="#b9661b" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M28 61 Q70 38 114 57" fill="none" stroke="#c97a22" stroke-width="2"/>
+      <g fill="#a85a17" opacity=".75"><circle cx="52" cy="50" r="1.8"/><circle cx="66" cy="44" r="1.5"/><circle cx="82" cy="47" r="1.8"/><circle cx="96" cy="52" r="1.4"/><circle cx="74" cy="56" r="1.3"/></g>
+      <ellipse cx="44" cy="72" rx="9" ry="4" fill="#f3efe2"/>
+      <ellipse cx="62" cy="75" rx="8" ry="3.5" fill="#e0643a"/>
+    </svg>
     <h1>Kitchen Radio</h1>
     <p>Tap anywhere to start</p>
   </div>
@@ -196,6 +227,14 @@
     <h1 id="alarmText">Timer done</h1>
     <p>Tap anywhere to stop</p>
   </div>
+</div>
+
+<div id="listen" hidden role="status" aria-live="polite">
+  <div class="lmic">🎙️</div>
+  <div class="ltitle">Listening…</div>
+  <div class="lheard" id="listenHeard">&nbsp;</div>
+  <div class="lhint" id="listenHint"></div>
+  <div class="llevel"><span id="listenLevel"></span></div>
 </div>
 
 <div id="toast" hidden></div>
@@ -220,6 +259,12 @@
       Set the playlist to <b>Public</b> or <b>Unlisted</b>. Private playlists and “Liked music” won’t play outside YouTube.</p>
     <div id="sMoods" style="display:grid;gap:10px"></div>
     <button type="button" class="btn" id="sAdd">+ Add a mood</button>
+
+    <h2>Voice</h2>
+    <label class="check"><input type="checkbox" id="sVoice"> Listen for “Hey Kitchen” (works offline, nothing leaves the phone)</label>
+    <label class="check"><input type="checkbox" id="sEcho"> Echo cancellation: helps it hear her over the music. Turn off if the music starts sounding thin or quiet.</label>
+    <p class="hint">Voice words for each mood must be plain English sound-alikes the phone knows:
+      “mara thi” for Marathi, “vee jay” for Vijay, “bah jan” for bhajan, “ari jay” for Arijit.</p>
 
     <h2>“Just play” picks</h2>
     <div class="grid2" id="sSchedule"></div>
@@ -253,17 +298,18 @@
 /* ---------- config & storage ---------- */
 
 const DEFAULT_MOODS = [
-  { id: 'brindavan', emoji: '🪈', color: '#f5a524', name: 'Brindavan Bhajans', sub: 'Radhe Radhe', url: '', list: '' },
-  { id: 'abhang',    emoji: '🚩', color: '#f76b15', name: 'Marathi Abhangs',   sub: 'Vitthal Vitthal', url: '', list: '' },
-  { id: 'melody',    emoji: '🎵', color: '#e93d82', name: 'Bollywood Melody',  sub: 'Arijit · Sachet–Parampara', url: '', list: '' },
-  { id: 'vijay',     emoji: '🔥', color: '#e5484d', name: 'Vijay Hits',        sub: 'Kollywood', url: '', list: '' },
-  { id: 'fav',       emoji: '❤️', color: '#8e4ec6', name: 'Favourites',        sub: 'Our liked mix', url: '', list: '' },
+  { id: 'brindavan', emoji: '🪈', color: '#f5a524', name: 'Brindavan Bhajans', sub: 'Radhe Radhe', say: 'krishna, radha, bah jan', url: '', list: '' },
+  { id: 'abhang',    emoji: '🚩', color: '#f76b15', name: 'Marathi Abhangs',   sub: 'Vitthal Vitthal', say: 'mara thi, mara thee, a bang', url: '', list: '' },
+  { id: 'melody',    emoji: '🎵', color: '#e93d82', name: 'Bollywood Melody',  sub: 'Arijit · Sachet–Parampara', say: 'melody, bollywood, hindi, ari jay', url: '', list: '' },
+  { id: 'vijay',     emoji: '🔥', color: '#e5484d', name: 'Vijay Hits',        sub: 'Kollywood', say: 'vee jay, vi jay, tamil', url: '', list: '' },
+  { id: 'fav',       emoji: '❤️', color: '#8e4ec6', name: 'Favourites',        sub: 'Our liked mix', say: 'favorites, favorite', url: '', list: '' },
 ];
 const COLORS = ['#f5a524', '#f76b15', '#e93d82', '#e5484d', '#8e4ec6', '#3e63dd', '#12a594', '#46a758'];
 const SLOTS = [['morning', 'Morning (5–11)'], ['afternoon', 'Afternoon (11–4)'], ['evening', 'Evening (4–9)'], ['night', 'Night (9–5)']];
 const DEFAULT_CFG = {
   name: '', volume: 60, autoStopMin: 0,
   schedule: { morning: 'brindavan', afternoon: 'melody', evening: 'melody', night: 'fav' },
+  voice: { enabled: true, echo: true },
   moods: DEFAULT_MOODS,
 };
 
@@ -276,7 +322,10 @@ function loadCfg() {
   const s = store.get('cfg', null);
   const base = structuredClone(DEFAULT_CFG);
   if (!s) return base;
-  return { ...base, ...s, schedule: { ...base.schedule, ...(s.schedule || {}) }, moods: Array.isArray(s.moods) ? s.moods : base.moods };
+  const moods = Array.isArray(s.moods) ? s.moods : base.moods;
+  // Settings saved before voice existed have no voice words: fill in the defaults.
+  for (const m of moods) if (m.say == null) m.say = base.moods.find((d) => d.id === m.id)?.say || '';
+  return { ...base, ...s, schedule: { ...base.schedule, ...(s.schedule || {}) }, voice: { ...base.voice, ...(s.voice || {}) }, moods };
 }
 let cfg = loadCfg();
 const saveCfg = () => store.set('cfg', cfg);
@@ -502,11 +551,11 @@ function tickTimers() {
 function ensureAudio() {
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {}
 }
-function beep(t, f) {
+function beep(t, f, vol = 0.7) {
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = 'sine'; o.frequency.value = f;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.7, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
   o.connect(g).connect(actx.destination);
   o.start(t); o.stop(t + 0.22);
@@ -584,11 +633,13 @@ function syncDraft() {
   if (!draft) return;
   draft.name = $('#sName').value.trim();
   draft.autoStopMin = +$('#sAuto').value;
+  draft.voice = { enabled: $('#sVoice').checked, echo: $('#sEcho').checked };
   document.querySelectorAll('#sMoods .srow').forEach((row) => {
     const m = draft.moods[+row.dataset.i];
     m.emoji = row.querySelector('.s-emoji').value.trim() || '🎵';
     m.name = row.querySelector('.s-name').value.trim() || 'Untitled';
     m.sub = row.querySelector('.s-sub').value.trim();
+    m.say = row.querySelector('.s-say').value.trim();
     m.url = row.querySelector('.s-list').value.trim();
     m.list = parseList(m.url);
     if (m.list === 'LM') m.list = '';
@@ -599,6 +650,8 @@ function syncDraft() {
 function renderSettings(focusId) {
   $('#sName').value = draft.name;
   $('#sAuto').value = String(draft.autoStopMin);
+  $('#sVoice').checked = draft.voice.enabled;
+  $('#sEcho').checked = draft.voice.echo;
   const box = $('#sMoods');
   box.innerHTML = draft.moods.map((m, i) => `
     <fieldset class="srow" data-i="${i}">
@@ -608,6 +661,7 @@ function renderSettings(focusId) {
         <button type="button" class="s-del" aria-label="Remove mood">🗑</button>
       </div>
       <input class="s-sub" value="${esc(m.sub)}" placeholder="Small line, e.g. Arijit · Sachet–Parampara" aria-label="Subtitle">
+      <input class="s-say" value="${esc(m.say)}" placeholder="Voice words, e.g. krishna, radha" aria-label="Voice words">
       <input class="s-list" value="${esc(m.url || m.list)}" placeholder="Paste playlist link" inputmode="url" aria-label="Playlist link">
       <small class="s-msg"></small>
     </fieldset>`).join('');
@@ -640,16 +694,18 @@ function openSettings(focusId) {
 
 $('#sAdd').onclick = () => {
   syncDraft();
-  draft.moods.push({ id: 'm' + Date.now(), emoji: '🎵', color: COLORS[draft.moods.length % COLORS.length], name: 'New mood', sub: '', url: '', list: '' });
+  draft.moods.push({ id: 'm' + Date.now(), emoji: '🎵', color: COLORS[draft.moods.length % COLORS.length], name: 'New mood', sub: '', say: '', url: '', list: '' });
   renderSettings(draft.moods.at(-1).id);
 };
 $('#sCancel').onclick = () => { draft = null; dlg.close(); };
 $('#sSave').onclick = () => {
   syncDraft();
+  const voiceChanged = draft.voice.enabled !== cfg.voice.enabled || draft.voice.echo !== cfg.voice.echo;
   cfg = draft; draft = null;
   saveCfg(); dlg.close();
   if (currentMood) currentMood = cfg.moods.find((m) => m.id === currentMood.id) || null;
   renderMoods(); tickClock();
+  if (voiceChanged && started) voiceRestart(); else rebuildCommands();
   toast('Saved');
 };
 $('#sCopy').onclick = async () => {
@@ -690,6 +746,7 @@ $('#start').onclick = () => {
   ensureAudio();
   keepAwake();
   document.documentElement.requestFullscreen?.().catch(() => {});
+  if (cfg.voice.enabled) voiceStart();
 };
 
 tickClock();
@@ -700,5 +757,6 @@ loadYouTube();
 setInterval(tickClock, 1000);
 setInterval(tickTimers, 250);
 </script>
+<script src="voice.js"></script>
 </body>
 </html>
