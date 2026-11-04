@@ -512,12 +512,20 @@ function showProblem(msg) {
 
 // YouTube sometimes shows "An error occurred" without telling the page anything, so if a song hasn't
 // started after a while: nudge it, then reload the playlist plainly, then try the next songs, then say so.
+// An advert also looks "not started" to the page, but its clock moves, so a moving clock means wait.
+let stallClock = 0;
 function watchForStall() {
   clearTimeout(stallTimer);
+  stallClock = player?.getCurrentTime?.() || 0;
   stallTimer = setTimeout(onStall, 12000);
 }
 function onStall() {
   if (!wantPlaying || !currentMood || isPlaying) return;
+  if (Math.abs((player.getCurrentTime?.() || 0) - stallClock) > 1) {
+    $('#npTitle').textContent = 'Advert playing…';
+    watchForStall();
+    return;
+  }
   stallTries++;
   if (stallTries === 1) player.playVideo();
   else if (stallTries === 2) { showProblem('The song didn’t start. Trying again…'); player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }); }
