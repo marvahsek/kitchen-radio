@@ -74,8 +74,8 @@ function buildCommands() {
     if (alarmTimer) return dismissAlarm();
     stopMusic();
   });
-  add(['pause', 'pause music', 'pause the music'], needMood(() => player.pauseVideo()));
-  add(['resume', 'continue', 'resume music', 'play again'], needMood(() => player.playVideo()));
+  add(['pause', 'pause music', 'pause the music'], needMood(() => { if (isPlaying) togglePlay(); }));
+  add(['resume', 'continue', 'resume music', 'play again'], needMood(() => { if (!isPlaying) togglePlay(); }));
   add(['next', 'next song', 'skip', 'skip song', 'skip this', 'change song', 'change the song', 'another song'], needMood(() => player.nextVideo()));
   add(['previous', 'previous song', 'go back', 'last song'], needMood(() => player.previousVideo()));
   add(['shuffle', 'shuffle songs'], needMood(() => startShuffled()));

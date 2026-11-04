@@ -29,8 +29,8 @@
     border-radius: 10px; padding: 10px 12px; width: 100%; user-select: text; -webkit-user-select: text; }
   [hidden] { display: none !important; }
 
-  #app { padding: 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "head" "moods" "now" "timers";
+  #app { padding: 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "head tools" "moods moods" "now now" "timers timers";
     transform: translate(var(--sx, 0px), var(--sy, 0px)); transition: filter .8s, transform 3s; }
   body.dim #app { filter: brightness(.35); }
 
@@ -40,6 +40,7 @@
   .hello { flex: 1; min-width: 0; }
   .greet { font-size: 18px; font-weight: 600; line-height: 1.2; }
   .date { color: var(--muted); font-size: 15px; margin-top: 2px; }
+  .tools { grid-area: tools; display: flex; gap: 10px; align-self: start; }
   .iconbtn { width: 50px; height: 50px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 22px; flex: none; }
   .vhint { flex-basis: 100%; color: var(--accent); font-size: 15px; font-weight: 600; min-height: 1.2em; }
   .mic-off { opacity: .45; }
@@ -76,15 +77,26 @@
   .mood.empty .mname, .mood.empty .emoji { opacity: .5; }
 
   .card { background: var(--panel); border-radius: var(--radius); padding: 14px; }
-  #now { grid-area: now; }
-  .playerwrap { width: 100%; aspect-ratio: 16 / 9; max-height: 34vh; border-radius: 12px; overflow: hidden; background: #000; position: relative; }
+  #now { grid-area: now; position: relative; overflow: hidden; }
+  #now > * { position: relative; }
+  /* The song's cover art, blurred, behind the card. */
+  #now > .np-bg { position: absolute; inset: -30px; background: center / cover no-repeat; filter: blur(30px) saturate(1.4);
+    opacity: 0; transition: opacity .8s; }
+  #now > .np-bg.on { opacity: .38; }
+  .np-top { display: flex; flex-wrap: wrap; gap: 14px; }
+  /* YouTube's rules need the player visible and at least 200×200, so it's shown as the album-art square. */
+  .playerwrap { width: 200px; height: 200px; flex: none; border-radius: 14px; overflow: hidden; background: #000; position: relative; }
   .playerwrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 16px; font-size: 16px; }
-  .placeholder b { display: block; font-size: 40px; margin-bottom: 6px; }
-  .np-meta { margin-top: 12px; min-height: 58px; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 16px; font-size: 15px; background: var(--panel2); }
+  .placeholder b { display: block; font-size: 44px; margin-bottom: 6px; }
+  .np-meta { flex: 1 1 140px; min-width: 140px; display: flex; flex-direction: column; gap: 3px; }
   .np-mood { font-size: 12px; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-  .np-title { font-size: 18px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .np-artist { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .np-title { font-size: 19px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .np-artist { color: var(--muted); font-size: 14px; }
+  .np-problem { color: #ffb37a; font-size: 13px; line-height: 1.35; margin-top: 4px; }
+  /* Decorative sound bars; YouTube doesn't let a page read the music itself. */
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: auto; padding-top: 10px; }
+  .bars span { flex: 1; height: 10%; border-radius: 2px; background: var(--accent); opacity: .85; transition: height .2s ease-out; }
   .controls { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; }
   .ctl { width: min(60px, 14vw); height: min(60px, 14vw); border-radius: 50%; background: var(--panel2); font-size: 22px; display: grid; place-items: center; flex: none; }
   .ctl.big { width: min(78px, 19vw); height: min(78px, 19vw); background: var(--accent); color: #1a1200; font-size: 30px; }
@@ -146,9 +158,53 @@
   .hint { font-size: 13px; color: var(--muted); line-height: 1.45; }
 
   @media (orientation: landscape) and (min-width: 700px) {
-    #app { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "head now" "moods now" "timers now"; align-items: start; }
+    #app { grid-template-columns: minmax(0, 1fr) auto minmax(380px, .9fr); grid-template-areas: "head tools now" "moods moods now" "timers timers now"; align-items: start; }
     #moods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .playerwrap { max-height: none; }
+  }
+
+  /* A phone on its side by the charger: everything on one screen, no scrolling, the clock as big as fits. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #app { height: 100vh; height: 100dvh; padding: 12px 14px; gap: 10px; align-items: stretch;
+      grid-template-columns: minmax(0, 1fr) auto minmax(360px, .82fr); grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: "head head now" "moods moods now" "timers tools now"; }
+    header { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 18px; align-items: center; }
+    .clock { grid-row: 1 / span 2; font-size: min(26vh, 10.5vw, 132px); }
+    .hello { align-self: end; }
+    .greet { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .date { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vhint { grid-column: 2; align-self: start; }
+    .tools { align-self: center; }
+    .iconbtn { width: 46px; height: 46px; font-size: 20px; }
+
+    #moods { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); min-height: 0; gap: 8px; }
+    .mood { min-height: 0; padding: 8px 12px; border-radius: 14px; }
+    .mood .mname { font-size: 16px; padding-right: 28px; }
+    .mood .msub { font-size: 12px; }
+    .mood .emoji { font-size: 22px; top: 7px; right: 9px; }
+
+    #timers { background: none; padding: 0; display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+    /* Room for four quick timers; any other length is a voice command away. */
+    #timers h2, #timers .custom, .chip[data-m="2"], .chip[data-m="15"], .chip[data-m="20"], .chip[data-m="30"] { display: none; }
+    #timers { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+    .tq { flex-wrap: nowrap; gap: 6px; }
+    .chip { width: 50px; padding: 11px 0; font-size: 15px; flex: none; }
+    #timerList { order: -1; display: flex; gap: 6px; margin: 0 !important; }
+    .timer { border: 0; padding: 4px 4px 4px 14px; background: var(--panel2); border-radius: 999px; gap: 6px; flex: none; overflow: hidden; }
+    .timer .rem { font-size: 22px; min-width: 0; }
+    .timer .lbl, .timer button:first-of-type { display: none; }
+    .timer button { width: 36px; height: 36px; }
+
+    #now { display: flex; flex-direction: column; justify-content: space-between; padding: 12px; min-height: 0; }
+    .np-top { flex-wrap: nowrap; }
+    .np-meta { min-width: 0; }
+    .controls { margin-top: 6px; }
+    .ctl { width: 44px; height: 44px; font-size: 18px; }
+    .ctl.big { width: 54px; height: 54px; font-size: 24px; }
+    .vol { margin-top: 4px; }
+    .vol input { height: 30px; }
+    .vol .ctl { width: 36px; height: 36px; }
+
+    #listen { right: auto; width: min(560px, calc(100% - 24px)); padding: 14px 16px; }
   }
 </style>
 </head>
@@ -160,22 +216,30 @@
       <div class="greet" id="greet">Hello</div>
       <div class="date" id="date"></div>
     </div>
-    <button class="iconbtn" id="btnMic" aria-label="Voice">🎙️</button>
-    <button class="iconbtn" id="btnSettings" aria-label="Settings">⚙️</button>
     <div class="vhint" id="voiceHint"></div>
   </header>
+
+  <div class="tools">
+    <button class="iconbtn" id="btnMic" aria-label="Voice">🎙️</button>
+    <button class="iconbtn" id="btnSettings" aria-label="Settings">⚙️</button>
+  </div>
 
   <section id="moods" aria-label="Moods"></section>
 
   <section id="now" class="card" aria-label="Now playing">
-    <div class="playerwrap">
-      <div id="yt"></div>
-      <div class="placeholder" id="placeholder"><div><b>🎶</b>Pick a mood to start the music</div></div>
-    </div>
-    <div class="np-meta">
-      <div class="np-mood" id="npMood">&nbsp;</div>
-      <div class="np-title" id="npTitle">Nothing playing</div>
-      <div class="np-artist" id="npArtist"></div>
+    <div class="np-bg" id="npBg"></div>
+    <div class="np-top">
+      <div class="playerwrap">
+        <div id="yt"></div>
+        <div class="placeholder" id="placeholder"><div><b>🎶</b>Pick a mood</div></div>
+      </div>
+      <div class="np-meta">
+        <div class="np-mood" id="npMood">&nbsp;</div>
+        <div class="np-title" id="npTitle">Nothing playing</div>
+        <div class="np-artist" id="npArtist"></div>
+        <div class="np-problem" id="npProblem" hidden></div>
+        <div class="bars" id="bars" aria-hidden="true"></div>
+      </div>
     </div>
     <div class="controls">
       <button class="ctl" id="btnStop" aria-label="Stop">⏹</button>
@@ -396,12 +460,18 @@ function renderMoods() {
 
 let player = null, playerReady = false, pendingMood = null, shuffleOnCue = false, cueFallback = null;
 let isPlaying = false, errCount = 0;
+// wantPlaying: music should be playing (a mood was picked and not paused or stopped). Used to spot stuck songs.
+let wantPlaying = false, stallTimer = null, stallTries = 0;
 const S = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+const YT_ERRORS = {
+  2: 'YouTube says the link is not valid', 5: 'this browser could not play it', 100: 'the song was removed or is private',
+  101: 'its owner only allows it inside YouTube', 150: 'its owner only allows it inside YouTube', 153: 'YouTube player setup problem',
+};
 
 window.onYouTubeIframeAPIReady = () => {
   player = new YT.Player('yt', {
     width: '100%', height: '100%',
-    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+    playerVars: { playsinline: 1, rel: 0, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, modestbranding: 1, origin: location.origin },
     events: {
       onReady: () => { playerReady = true; applyVolume(); if (pendingMood) { const m = pendingMood; pendingMood = null; playMood(m); } },
       onStateChange: onPlayerState,
@@ -425,12 +495,39 @@ function playMood(m) {
   $('#npArtist').textContent = '';
   if (!playerReady) { pendingMood = m; return; }
   $('#placeholder').hidden = true;
-  errCount = 0;
+  errCount = 0; stallTries = 0; wantPlaying = true;
+  showProblem('');
   cancelFade(); duckFactor = 1; applyVolume();
   shuffleOnCue = true;
   player.cuePlaylist({ listType: 'playlist', list: m.list, index: 0 });
   clearTimeout(cueFallback);
   cueFallback = setTimeout(() => { if (shuffleOnCue) { shuffleOnCue = false; player.playVideo(); } }, 4000);
+  watchForStall();
+}
+
+function showProblem(msg) {
+  const el = $('#npProblem');
+  el.textContent = msg; el.hidden = !msg;
+}
+
+// YouTube sometimes shows "An error occurred" without telling the page anything, so if a song hasn't
+// started after a while: nudge it, then reload the playlist plainly, then try the next songs, then say so.
+function watchForStall() {
+  clearTimeout(stallTimer);
+  stallTimer = setTimeout(onStall, 12000);
+}
+function onStall() {
+  if (!wantPlaying || !currentMood || isPlaying) return;
+  stallTries++;
+  if (stallTries === 1) player.playVideo();
+  else if (stallTries === 2) { showProblem('The song didn’t start. Trying again…'); player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }); }
+  else if (stallTries <= 4) { showProblem('That song didn’t start. Trying the next one…'); player.nextVideo(); }
+  else {
+    showProblem('YouTube isn’t starting this playlist. Tap ▶ to try again, and check the playlist plays in the YouTube Music app.');
+    $('#npTitle').textContent = 'Not playing';
+    return;
+  }
+  watchForStall();
 }
 
 function startShuffled() {
@@ -446,41 +543,68 @@ function onPlayerState(e) {
     startShuffled();
     return;
   }
-  isPlaying = e.data === S.PLAYING || e.data === S.BUFFERING;
-  $('#btnPlay').textContent = isPlaying ? '⏸' : '▶';
+  isPlaying = e.data === S.PLAYING;
+  $('#btnPlay').textContent = isPlaying || e.data === S.BUFFERING ? '⏸' : '▶';
   if (e.data === S.PLAYING) {
-    errCount = 0;
+    errCount = 0; stallTries = 0;
+    clearTimeout(stallTimer);
+    showProblem('');
     const d = player.getVideoData?.() || {};
     $('#npTitle').textContent = d.title || 'Playing';
     $('#npArtist').textContent = (d.author || '').replace(/ - Topic$/, '');
+    if (d.video_id) { $('#npBg').style.backgroundImage = `url("https://i.ytimg.com/vi/${d.video_id}/hqdefault.jpg")`; $('#npBg').classList.add('on'); }
+  } else if (wantPlaying && e.data !== S.PAUSED) {
+    watchForStall(); // between songs, or buffering: make sure the next one actually starts
   }
 }
 
 function onPlayerError(e) {
   errCount++;
+  const why = YT_ERRORS[e.data] || 'YouTube could not play it';
   if (errCount > 8) {
-    toast('Too many songs in this playlist can’t play here. Check the playlist is Public or Unlisted.', 7000);
+    showProblem(`Songs in this playlist keep failing: ${why} (code ${e.data}). Check the playlist is Public or Unlisted.`);
     $('#npTitle').textContent = 'This playlist won’t play';
     return;
   }
-  // 101/150: the uploader blocked playback outside YouTube. Skip it.
-  if (e.data === 101 || e.data === 150) toast('Skipped a song that only plays inside YouTube');
+  showProblem(`Skipped a song: ${why} (code ${e.data}).`);
   setTimeout(() => player.nextVideo(), 700);
+  watchForStall();
 }
 
 function togglePlay() {
   if (!playerReady) return;
   if (!currentMood) { const m = pickJustPlay(); return m ? playMood(m) : openSettings(); }
-  if (isPlaying) player.pauseVideo();
-  else { cancelFade(); duckFactor = 1; applyVolume(); player.playVideo(); }
+  if (isPlaying) { wantPlaying = false; player.pauseVideo(); return; }
+  if (stallTries > 4 || errCount > 8) return playMood(currentMood); // it gave up earlier: start over
+  wantPlaying = true;
+  cancelFade(); duckFactor = 1; applyVolume(); player.playVideo();
+  watchForStall();
 }
 function stopMusic() {
   if (!playerReady) return;
+  wantPlaying = false;
+  clearTimeout(stallTimer);
   player.stopVideo();
   currentMood = null; renderMoods();
   $('#placeholder').hidden = false;
+  $('#npBg').classList.remove('on');
+  showProblem('');
   $('#npMood').innerHTML = '&nbsp;'; $('#npTitle').textContent = 'Nothing playing'; $('#npArtist').textContent = '';
 }
+
+// Sound bars: a gentle random dance while music plays, flat when it doesn't.
+const BAR_COUNT = 22;
+$('#bars').innerHTML = '<span></span>'.repeat(BAR_COUNT);
+const barEls = [...$('#bars').children];
+let barPhase = 0;
+setInterval(() => {
+  if (document.hidden) return;
+  barPhase += 0.35;
+  barEls.forEach((b, i) => {
+    const h = isPlaying ? 18 + 70 * Math.abs(Math.sin(barPhase + i * 0.55)) * (0.55 + 0.45 * Math.random()) : 10;
+    b.style.height = `${h.toFixed(0)}%`;
+  });
+}, 200);
 
 /* ---------- volume, ducking & fades ---------- */
 
@@ -599,7 +723,7 @@ setInterval(() => {
   const idle = Date.now() - lastTouch;
   if (idle > 3 * 60000 && !alarmTimer) document.body.classList.add('dim');
   if (cfg.autoStopMin > 0 && isPlaying && !fadeTimer && idle > cfg.autoStopMin * 60000) {
-    fadeTo(0, 10000, () => { player.pauseVideo(); duckFactor = 1; applyVolume(); });
+    fadeTo(0, 10000, () => { wantPlaying = false; player.pauseVideo(); duckFactor = 1; applyVolume(); });
   }
 }, 10000);
 // Nudge the whole page a couple of pixels now and then so the static layout doesn't burn into an old AMOLED screen.
