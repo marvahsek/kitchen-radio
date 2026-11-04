@@ -327,7 +327,8 @@
     <h2>Voice</h2>
     <label class="check"><input type="checkbox" id="sVoice"> Listen for “Kishori” (works offline, nothing leaves the phone).
       While music plays, say it with the command (“Kishori, next song”) or say “Kishori Maa”.</label>
-    <label class="check"><input type="checkbox" id="sEcho"> Echo cancellation: helps it hear her over the music. Turn off if the music starts sounding thin or quiet.</label>
+    <label class="check"><input type="checkbox" id="sEcho"> Echo cancellation: helps it hear her over the music. On some phones it puts the
+      phone into call-style audio and YouTube won’t play; then it turns itself off. Also turn it off if the music sounds thin or quiet.</label>
     <p class="hint">Voice words for each mood must be plain English sound-alikes the phone knows:
       “mara thi” for Marathi, “vee jay” for Vijay, “bah jan” for bhajan, “ari jay” for Arijit.</p>
 
@@ -528,6 +529,12 @@ function onStall() {
   }
   stallTries++;
   if (stallTries === 1) player.playVideo();
+  else if (stallTries === 2 && cfg.voice.echo && voice.stream) {
+    // The mic's call-style audio can stop YouTube starting songs on some phones: switch it off for good.
+    cfg.voice.echo = false; saveCfg();
+    showProblem('Switched the microphone to music-friendly mode. Trying again…');
+    voiceRestart().then(() => player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }));
+  }
   else if (stallTries === 2) { showProblem('The song didn’t start. Trying again…'); player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }); }
   else if (stallTries <= 4) { showProblem('That song didn’t start. Trying the next one…'); player.nextVideo(); }
   else {

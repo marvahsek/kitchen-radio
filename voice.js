@@ -137,8 +137,11 @@ async function voiceStart(opts = {}) {
     ensureAudio();
     voice.sampleRate = actx.sampleRate;
     if (!opts.noMic) {
+      // With voice processing on, some phones (seen on a Redmi Note 10 Pro Max) switch to call-style
+      // audio and YouTube can't start songs. "Music-friendly" mode turns all of it off.
+      const p = cfg.voice.echo;
       voice.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: cfg.voice.echo, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+        audio: { echoCancellation: p, noiseSuppression: p, autoGainControl: p, channelCount: 1 },
       });
     }
     if (!voice.model) {
