@@ -2,19 +2,33 @@
 
 /* ---------- voice control ----------
    Runs entirely on the phone with Vosk (offline speech recognition). Two recognisers share one model:
-   - wakeRec hears everything with its full English vocabulary, so ordinary talk and song lyrics
-     rarely turn into "hey kitchen" (a phrase-limited recogniser forces everything into its phrases).
+   - wakeRec listens for "Kishori" among a few hundred everyday words, which soak up ordinary talk and
+     lyrics. The model doesn't know "Kishori", so it is spelled by sound ("kish ori", "ki shorty").
    - cmdRec only knows the command phrases, so Indian names come out right ("mara thi", "vee jay").
-   After the wake phrase, audio goes to cmdRec for a few seconds, then back to wakeRec. */
+   After the wake word, audio goes to cmdRec for a few seconds, then back to wakeRec.
+
+   Brindavan bhajans sing "Kishori" a lot, so while music plays a plain "Kishori" only counts if a
+   command follows in the same breath ("Kishori, next song"), checked silently. "Kishori Maa" always
+   opens the listening window. */
 
 const VOICE_LIB = 'vendor/vosk-browser-0.0.8.js';
 const VOICE_MODEL = new URL('models/vosk-model-small-en-in-0.4.tar.gz', location.href).href;
 
-// "hey" is often heard as "he", "ho" or "oh"; "the kitchen" only counts at the start of an utterance,
-// so "I'm in the kitchen" doesn't wake it.
-const WAKE_ANY = /\b(hey|hi|hay|he|ho|oh|okay|ok|hello|halo|hallo) kitchen\b/;
-const WAKE_START = /^(the |yeah |a |and )?kitchen\b/;
-const WAKE_WORDS = ['hey kitchen', 'okay kitchen', 'hello kitchen', 'kitchen'];
+const WAKE_PLAIN = ['kish ori', 'ki shorty', 'ki sorry', 'key shorty'];
+const WAKE_STRONG = WAKE_PLAIN.map((p) => p + ' ma');
+const WAKE_ENDS = new Set(['ori', 'shorty', 'sorry']);
+const WAKE_MIN_CONF = 0.55;
+// Everyday English, Hindi and Tamil words for wakeRec to put non-wake speech into. Words the model
+// doesn't know are dropped by Vosk.
+const WAKE_GARBAGE = ('the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she or an ' +
+  'will my one all would there their what so up out if about who get which go me when make can like time no just him know take people ' +
+  'into year your good some could them see other than then now look only come its over think also back after use two how our work first ' +
+  'well way even new want because any these give day most us is are was were been has had did said says going went got made very much ' +
+  'more many lot yes okay ok oh ah hmm hey hi hello please thank thanks sorry sure right here where why tell call phone mother father ' +
+  'baby kids child food rice milk tea water salt sugar dal curry roti cooker gas fire hot cold eat wait stop enough start done ready let ' +
+  'put keep bring open close door fridge kitchen house home today tomorrow morning evening night week money car keys clean wash cut boil ' +
+  'cook fry song songs music love heart life dream sky rain moon sun god ram krishna radha hari jai ma pa na ka ra ha ho hum main yeh ' +
+  'wo vo ne se ki ko par tho anna amma po').split(' ');
 // Everyday words give cmdRec somewhere to put speech that isn't a command.
 const FILLERS = ('i you we he she it they the a an is are was to of and in on at for with this that what yes no not do did ' +
   'have has my your our now so but just very like oh uh um ah hmm come go get give take make put here there where when how why who can will would should')
@@ -98,7 +112,7 @@ function rebuildCommands() {
   renderVoiceHints();
   if (!voice.model) return;
   voice.cmdRec?.remove();
-  const grammar = [...new Set([...voice.commands.keys(), ...WAKE_WORDS, ...FILLERS]), '[unk]'];
+  const grammar = [...new Set([...voice.commands.keys(), ...WAKE_PLAIN, ...WAKE_STRONG, ...FILLERS]), '[unk]'];
   voice.cmdRec = new voice.model.KaldiRecognizer(voice.sampleRate, JSON.stringify(grammar));
   voice.cmdRec.setWords(true);
   voice.cmdRec.on('partialresult', (m) => onCmdPartial(m.result.partial || ''));
@@ -133,9 +147,11 @@ async function voiceStart(opts = {}) {
       voice.model = await Vosk.createModel(VOICE_MODEL, -2);
     }
     voice.wakeRec?.remove();
-    voice.wakeRec = new voice.model.KaldiRecognizer(voice.sampleRate);
-    voice.wakeRec.on('partialresult', (m) => onWakeText(m.result.partial || ''));
-    voice.wakeRec.on('result', (m) => onWakeText(m.result.text || ''));
+    const wakeGrammar = [...new Set([...WAKE_GARBAGE, ...WAKE_PLAIN, ...WAKE_STRONG]), '[unk]'];
+    voice.wakeRec = new voice.model.KaldiRecognizer(voice.sampleRate, JSON.stringify(wakeGrammar));
+    voice.wakeRec.setWords(true);
+    voice.wakeRec.on('partialresult', (m) => onWakePartial(m.result.partial || ''));
+    voice.wakeRec.on('result', (m) => onWakeResult(m.result));
     rebuildCommands();
     if (voice.stream) {
       voice.src = actx.createMediaStreamSource(voice.stream);
@@ -156,7 +172,7 @@ async function voiceStart(opts = {}) {
 }
 
 function voiceStop() {
-  if (voice.mode === 'listening') stopListening(false, true);
+  if (voice.mode !== 'idle') stopListening(false, true);
   voice.node?.disconnect(); voice.src?.disconnect();
   voice.stream?.getTracks().forEach((t) => t.stop());
   voice.node = voice.src = voice.stream = null;
@@ -171,7 +187,16 @@ function setVoiceState(state, msg) {
   const b = $('#btnMic');
   b.className = 'iconbtn mic-' + state;
   b.setAttribute('aria-label', state === 'off' ? 'Turn voice on' : 'Turn voice off');
-  $('#voiceHint').textContent = msg ?? (state === 'ready' || state === 'listening' ? 'Say “Hey Kitchen”' : state === 'off' ? 'Voice off' : '');
+  $('#voiceHint').textContent = msg ?? (state === 'ready' || state === 'listening' ? 'Say “Kishori”' : state === 'off' ? 'Voice off' : '');
+}
+
+// A quiet on-screen nudge, e.g. after a plain "Kishori" over music didn't lead anywhere.
+let hintTimer;
+function flashHint(text) {
+  if (voice.state !== 'ready') return;
+  $('#voiceHint').textContent = text;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => voice.state === 'ready' && setVoiceState('ready'), 6000);
 }
 
 /* ---------- audio in ---------- */
@@ -179,39 +204,89 @@ function setVoiceState(state, msg) {
 function onAudio(ch) {
   if (voice.state !== 'ready' && voice.state !== 'listening') return;
   const buf = new Float32Array(ch);
-  // Keep the last 1.5 s so a command said in the same breath as the wake phrase isn't lost.
+  // Keep the last 2.5 s so a command said in the same breath as the wake word isn't lost.
   voice.ring.push(buf);
   let total = 0;
   for (const b of voice.ring) total += b.length;
-  while (total > voice.sampleRate * 1.5) total -= voice.ring.shift().length;
+  while (total > voice.sampleRate * 2.5) total -= voice.ring.shift().length;
 
   if (voice.mode === 'idle') {
     voice.wakeRec.acceptWaveformFloat(buf, voice.sampleRate);
+    checkWake();
   } else {
     voice.cmdRec.acceptWaveformFloat(buf, voice.sampleRate);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i += 4) sum += buf[i] * buf[i];
-    $('#listenLevel').style.width = `${Math.min(100, Math.sqrt(sum / (buf.length / 4)) * 400)}%`;
+    if (voice.mode === 'listening') {
+      let sum = 0;
+      for (let i = 0; i < buf.length; i += 4) sum += buf[i] * buf[i];
+      $('#listenLevel').style.width = `${Math.min(100, Math.sqrt(sum / (buf.length / 4)) * 400)}%`;
+    }
     checkListening();
   }
 }
 
-function onWakeText(text) {
-  if (voice.mode !== 'idle' || !text || performance.now() < voice.cooldownUntil) return;
-  // While a timer is ringing, a plain "stop" is enough.
-  if (alarmTimer && /\b(stop|okay|ok|enough|thank you)\b/.test(text)) { voice.wakeRec.retrieveFinalResult(); dismissAlarm(); return; }
-  if (WAKE_ANY.test(text) || WAKE_START.test(text)) startListening();
+/* ---------- the wake word ---------- */
+
+// Partial results carry no confidence, so when one looks like the wake word we ask wakeRec for its
+// final result (which does) and decide in onWakeResult. A plain "Kishori" waits a moment for a "Maa".
+function onWakePartial(p) {
+  if (voice.mode !== 'idle' || voice.wakeAskedAt) return;
+  if (WAKE_STRONG.some((w) => p.includes(w))) { voice.wakeSeenAt = 0; askWake(); return; }
+  if (!voice.wakeSeenAt && WAKE_PLAIN.some((w) => p.includes(w))) voice.wakeSeenAt = performance.now();
+  // With music there may be no pause to end on, so keep the running text short; don't cut between "ki" and "shorty".
+  if (!voice.wakeSeenAt && p.split(' ').length > 12 && !/\b(ki|kish|key)$/.test(p)) voice.wakeRec.retrieveFinalResult();
 }
 
-/* ---------- the listening window ---------- */
+function checkWake() {
+  if (voice.wakeSeenAt && performance.now() - voice.wakeSeenAt > 700) { voice.wakeSeenAt = 0; askWake(); }
+  if (voice.wakeAskedAt && performance.now() - voice.wakeAskedAt > 2000) voice.wakeAskedAt = 0;
+}
+
+function askWake() {
+  voice.wakeAskedAt = performance.now();
+  voice.wakeRec.retrieveFinalResult();
+}
+
+function findWake(res) {
+  const ws = res.result || [], toks = ws.map((w) => w.word);
+  for (const [kind, phrases] of [['strong', WAKE_STRONG], ['plain', WAKE_PLAIN]]) {
+    for (const p of phrases) {
+      const pt = p.split(' ');
+      for (let i = 0; i + pt.length <= toks.length; i++) {
+        if (pt.every((t, j) => toks[i + j] === t)) {
+          const avg = ws.slice(i, i + pt.length).reduce((a, w) => a + w.conf, 0) / pt.length;
+          if (avg >= WAKE_MIN_CONF) return kind;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function onWakeResult(res) {
+  voice.wakeAskedAt = 0;
+  voice.wakeSeenAt = 0;
+  if (voice.mode !== 'idle' || performance.now() < voice.cooldownUntil) return;
+  // While a timer is ringing, a plain "stop" is enough.
+  if (alarmTimer && (res.result || []).some((w) => ['stop', 'okay', 'ok', 'enough'].includes(w.word) && w.conf >= 0.7)) { dismissAlarm(); return; }
+  const kind = findWake(res);
+  if (!kind) return;
+  if (kind === 'plain' && isPlaying) startChecking();
+  else startListening();
+}
+
+/* ---------- after the wake word ---------- */
+
+function openCommandWindow(mode, ms) {
+  voice.mode = mode;
+  voice.lastPartial = '';
+  voice.forced = false;
+  voice.listenStart = voice.partialAt = performance.now();
+  voice.listenUntil = voice.listenStart + ms;
+  for (const b of voice.ring) voice.cmdRec.acceptWaveformFloat(b, voice.sampleRate);
+}
 
 function startListening() {
-  voice.mode = 'listening';
-  voice.wakeRec.retrieveFinalResult(); // resets it; the result that comes back is ignored while listening
-  voice.lastPartial = '';
-  voice.listenStart = voice.partialAt = performance.now();
-  voice.listenUntil = voice.listenStart + 7000;
-  for (const b of voice.ring) voice.cmdRec.acceptWaveformFloat(b, voice.sampleRate);
+  openCommandWindow('listening', 7000);
   setVoiceState('listening');
   $('#listenHeard').innerHTML = '&nbsp;';
   $('#listen').hidden = false;
@@ -219,21 +294,34 @@ function startListening() {
   if (!alarmTimer) fadeTo(0.2, 300);
 }
 
+// A plain "Kishori" over music could be the song, so look for a command without chiming or lowering the music.
+function startChecking() {
+  openCommandWindow('checking', 3500);
+}
+
 function stopListening(understood, quiet) {
+  const was = voice.mode;
   voice.mode = 'idle';
   voice.cmdRec?.retrieveFinalResult();
-  voice.cooldownUntil = performance.now() + 1500;
+  // Short, so "Kishori… Kishori Maa" straight after a silent check still works.
+  voice.cooldownUntil = performance.now() + 300;
+  if (was === 'checking') {
+    if (!understood && !quiet) flashHint('Over music, say “Kishori Maa”');
+    return;
+  }
   $('#listen').hidden = true;
   if (voice.state === 'listening') setVoiceState('ready');
   if (!understood && !quiet) chime(false);
   if (!alarmTimer) fadeTo(1, 800);
 }
 
-// What was said after the wake phrase, if it ends in a command with at most one stray word before it
+// What was said after the wake word, if it ends in a command with at most one stray word before it
 // ("uh play melody"). Anything chattier is treated as talk, not a command.
 function matchCommand(text) {
   const words = text.replace(/\[unk\]/g, ' ').trim().split(/\s+/).filter(Boolean);
-  const rest = words.slice(words.lastIndexOf('kitchen') + 1);
+  let k = -1;
+  words.forEach((w, i) => { if (WAKE_ENDS.has(w)) k = words[i + 1] === 'ma' ? i + 1 : i; });
+  const rest = words.slice(k + 1);
   for (let i = 0; i < rest.length && i <= 1; i++) {
     const p = rest.slice(i).join(' ');
     if (voice.commands.has(p)) return p;
@@ -242,17 +330,18 @@ function matchCommand(text) {
 }
 
 function onCmdPartial(p) {
-  if (voice.mode !== 'listening' || p === voice.lastPartial) return;
+  if (voice.mode === 'idle' || p === voice.lastPartial) return;
   voice.lastPartial = p;
   voice.partialAt = performance.now();
   voice.forced = false;
-  voice.listenUntil = Math.max(voice.listenUntil, voice.partialAt + 3000);
-  const shown = p.replace(/\[unk\]/g, '').replace(/^.*\bkitchen\b/, '').trim();
+  voice.listenUntil = Math.max(voice.listenUntil, voice.partialAt + (voice.mode === 'listening' ? 3000 : 1800));
+  if (voice.mode !== 'listening') return;
+  const shown = p.replace(/\[unk\]/g, '').replace(/^.*\b(ori|shorty|sorry)( ma)?\b/, '').trim();
   $('#listenHeard').textContent = shown || ' ';
 }
 
 function onCmdResult(res) {
-  if (voice.mode !== 'listening') return;
+  if (voice.mode === 'idle') return;
   voice.lastPartial = '';
   const cmd = matchCommand(res.text || '');
   if (!cmd) return;
@@ -266,7 +355,7 @@ function onCmdResult(res) {
 // been a whole command for a moment, ask for the final result (which carries confidence) and decide there.
 // Wait longer for commands that could still grow ("play" → "play krishna").
 function checkListening() {
-  if (voice.mode !== 'listening') return;
+  if (voice.mode === 'idle') return;
   const now = performance.now();
   const cmd = !voice.forced && matchCommand(voice.lastPartial);
   if (cmd && now - voice.partialAt > (voice.prefixes.has(cmd) ? 1500 : 800)) {
@@ -274,7 +363,7 @@ function checkListening() {
     voice.cmdRec.retrieveFinalResult();
     return;
   }
-  if (now > voice.listenUntil || now - voice.listenStart > 15000) stopListening(false);
+  if (now > voice.listenUntil || now - voice.listenStart > (voice.mode === 'listening' ? 15000 : 6000)) stopListening(false);
 }
 
 function runCommand(cmd) {
@@ -315,7 +404,10 @@ window.voiceTestFile = async (url) => {
   const chunks = [];
   for (let i = 0; i < ch.length; i += step) chunks.push(ch.subarray(i, i + step));
   for (let i = 0; i < 24; i++) chunks.push(pause);
-  for (const c of chunks) { onAudio(c); await new Promise((r) => setTimeout(r, (step / buf.sampleRate) * 1000)); }
+  const wait = () => new Promise((r) => setTimeout(r, (step / buf.sampleRate) * 1000));
+  for (const c of chunks) { onAudio(c); await wait(); }
+  // Like a quiet room: keep sending silence until any listening window has closed.
+  for (let i = 0; voice.mode !== 'idle' && i < 250; i++) { onAudio(pause); await wait(); }
 };
 
 setVoiceState('off');
