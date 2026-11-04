@@ -500,10 +500,28 @@ function playMood(m) {
   showProblem('');
   cancelFade(); duckFactor = 1; applyVolume();
   shuffleOnCue = true;
-  player.cuePlaylist({ listType: 'playlist', list: m.list, index: 0 });
-  clearTimeout(cueFallback);
-  cueFallback = setTimeout(() => { if (shuffleOnCue) { shuffleOnCue = false; player.playVideo(); } }, 4000);
+  // The player keeps the old songs until a new playlist really loads (it even reports the new name), so
+  // remember them to tell the two apart.
+  prevIds = lastLoadedList === m.list ? '' : (player.getPlaylist?.() || []).join();
+  player.stopVideo(); // otherwise, if the new playlist won't load, the old one keeps playing under the new name
+  cueMood(m, 0);
   watchForStall();
+}
+let lastLoadedList = null, prevIds = '';
+
+// If the song a playlist starts on is blocked outside YouTube, YouTube refuses to load the whole
+// playlist (seen with a Brindavan list). Starting from a later song gets it loaded.
+function cueMood(m, idx) {
+  player.cuePlaylist({ listType: 'playlist', list: m.list, index: idx });
+  clearTimeout(cueFallback);
+  cueFallback = setTimeout(() => {
+    if (!shuffleOnCue || currentMood !== m) return;
+    if (idx < 5) return cueMood(m, idx + 1);
+    shuffleOnCue = false;
+    wantPlaying = false; clearTimeout(stallTimer);
+    showProblem('YouTube won’t load this playlist outside its app. Try making a fresh copy of it in YouTube Music and pasting the new link in ⚙️.');
+    $('#npTitle').textContent = 'Not playing';
+  }, 4000);
 }
 
 function showProblem(msg) {
@@ -522,6 +540,7 @@ function watchForStall() {
 }
 function onStall() {
   if (!wantPlaying || !currentMood || isPlaying) return;
+  if (shuffleOnCue) { watchForStall(); return; } // the playlist is still loading; cueMood deals with that
   if (Math.abs((player.getCurrentTime?.() || 0) - stallClock) > 1) {
     $('#npTitle').textContent = 'Advert playing…';
     watchForStall();
@@ -533,9 +552,9 @@ function onStall() {
     // The mic's call-style audio can stop YouTube starting songs on some phones: switch it off for good.
     cfg.voice.echo = false; saveCfg();
     showProblem('Switched the microphone to music-friendly mode. Trying again…');
-    voiceRestart().then(() => player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }));
+    voiceRestart().then(() => player.nextVideo());
   }
-  else if (stallTries === 2) { showProblem('The song didn’t start. Trying again…'); player.loadPlaylist({ listType: 'playlist', list: currentMood.list, index: 0 }); }
+  else if (stallTries === 2) { showProblem('The song didn’t start. Trying the next one…'); player.nextVideo(); }
   else if (stallTries <= 4) { showProblem('That song didn’t start. Trying the next one…'); player.nextVideo(); }
   else {
     showProblem('YouTube isn’t starting this playlist. Tap ▶ to try again, and check the playlist plays in the YouTube Music app.');
@@ -554,7 +573,10 @@ function startShuffled() {
 
 function onPlayerState(e) {
   if (e.data === S.CUED && shuffleOnCue) {
+    const ids = (player.getPlaylist?.() || []).join();
+    if (!ids || (prevIds && ids === prevIds)) return; // still the old songs (stopping one also reports "cued")
     shuffleOnCue = false; clearTimeout(cueFallback);
+    lastLoadedList = currentMood?.list;
     startShuffled();
     return;
   }
