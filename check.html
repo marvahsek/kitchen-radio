@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player Check</title>
+<style>
+  :root { --bg: #0a0a0d; --panel: #15151b; --text: #f4f1ea; --muted: #9b98a6; --accent: #f5a524; --ok: #3fb950; --bad: #e5484d; color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, Roboto, sans-serif; padding: 16px; }
+  main { max-width: 900px; margin: auto; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 760px) { main { grid-template-columns: 340px minmax(0, 1fr); align-items: start; } }
+  h1 { font-size: 22px; }
+  p { color: var(--muted); font-size: 14px; }
+  #go { padding: 16px; border: 0; border-radius: 14px; background: var(--accent); color: #1a1200; font: 700 18px system-ui; width: 100%; }
+  #go:disabled { opacity: .5; }
+  #p { width: 320px; height: 180px; background: #000; border-radius: 10px; overflow: hidden; }
+  ol { display: grid; gap: 8px; padding: 0; list-style: none; }
+  li { background: var(--panel); border-radius: 12px; padding: 10px 12px; }
+  li b { display: block; }
+  .r { font-size: 14px; color: var(--muted); }
+  .r.ok { color: var(--ok); } .r.bad { color: var(--bad); }
+  #ua { font-size: 12px; color: var(--muted); word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <section style="display:grid;gap:12px">
+    <h1>Kitchen Radio: player check</h1>
+    <p>Runs four short tests (about a minute) to find out why YouTube won’t play here. Keep this screen open and allow the microphone when asked. Then take a screenshot.</p>
+    <button id="go">Run the checks</button>
+    <div id="p"><div id="yt"></div></div>
+  </section>
+  <section style="display:grid;gap:10px">
+    <ol id="list"></ol>
+    <div id="ua"></div>
+  </section>
+</main>
+<script>
+'use strict';
+const TESTS = [
+  { name: '1. Ordinary video, mic off', video: 'jNQXAC9IVRw' },
+  { name: '2. Music song, mic off', video: 'GkJ_wZy0iB4' },
+  { name: '3. Music song, mic on (echo cancellation on)', video: 'GkJ_wZy0iB4', mic: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } },
+  { name: '4. Music song, mic on (echo cancellation off)', video: 'GkJ_wZy0iB4', mic: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } },
+];
+const $ = (s) => document.querySelector(s);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+$('#list').innerHTML = TESTS.map((t, i) => `<li><b>${t.name}</b><span class="r" id="r${i}">Not run yet</span></li>`).join('');
+$('#ua').textContent = navigator.userAgent;
+
+let apiReady = new Promise((r) => { window.onYouTubeIframeAPIReady = r; });
+const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.append(s);
+
+let player = null;
+async function runTest(t, i) {
+  const out = $('#r' + i);
+  out.className = 'r'; out.textContent = 'Running…';
+  let stream = null;
+  if (t.mic) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: t.mic }); }
+    catch (e) { out.className = 'r bad'; out.textContent = '✗ Microphone not allowed (' + e.name + ')'; return; }
+  }
+  const states = [], errors = [];
+  if (player) { player.destroy(); $('#p').innerHTML = '<div id="yt"></div>'; }
+  await new Promise((ready) => {
+    player = new YT.Player('yt', {
+      width: 320, height: 180, videoId: t.video,
+      playerVars: { autoplay: 1, playsinline: 1, origin: location.origin },
+      events: {
+        onReady: (e) => { e.target.playVideo(); ready(); },
+        onStateChange: (e) => states.push(e.data),
+        onError: (e) => errors.push(e.data),
+      },
+    });
+  });
+  await sleep(15000);
+  const time = player.getCurrentTime?.() || 0;
+  stream?.getTracks().forEach((tr) => tr.stop());
+  const played = states.includes(1) && time > 2;
+  if (played) { out.className = 'r ok'; out.textContent = `✓ Played (${time.toFixed(0)} s)`; }
+  else if (errors.length) { out.className = 'r bad'; out.textContent = `✗ YouTube error ${errors.join(', ')}`; }
+  else if (time > 2) { out.className = 'r ok'; out.textContent = `✓ Something played for ${time.toFixed(0)} s (maybe an advert)`; }
+  else { out.className = 'r bad'; out.textContent = `✗ Didn’t start (player states: ${states.join(' → ') || 'none'})`; }
+  player.stopVideo?.();
+}
+
+$('#go').onclick = async () => {
+  $('#go').disabled = true; $('#go').textContent = 'Checking… about a minute';
+  await apiReady;
+  for (let i = 0; i < TESTS.length; i++) await runTest(TESTS[i], i);
+  $('#go').disabled = false; $('#go').textContent = 'Done. Take a screenshot (tap to run again)';
+};
+</script>
+</body>
+</html>
