@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Test Harness</title>
+<style>
+  :root { --bg: #0a0a0d; --panel: #15151b; --panel2: #20202a; --line: #2a2a34; --text: #f4f1ea; --muted: #9b98a6; --accent: #f5a524; --ok: #3fb950; --bad: #e5484d; color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, Roboto, sans-serif; padding: 16px; }
+  main { max-width: 900px; margin: auto; display: grid; gap: 16px; }
+  h1 { font-size: 22px; color: var(--accent); }
+  p { color: var(--muted); font-size: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  button, label.btn { padding: 12px 20px; border-radius: 12px; background: var(--accent); color: #1a1200; font: 700 16px system-ui; cursor: pointer; border: 0; display: inline-flex; align-items: center; justify-content: center; }
+  button.sec, label.btn.sec { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input[type="file"] { display: none; }
+  #log { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; font-family: ui-monospace, monospace; font-size: 13px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+  ol { display: grid; gap: 8px; list-style: none; padding: 0; }
+  li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 4px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; width: fit-content; }
+  .badge.ok { background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); }
+  .badge.bad { background: color-mix(in srgb, var(--bad) 25%, transparent); color: var(--bad); }
+  .badge.run { background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--accent); }
+  .badge.wait { background: var(--panel2); color: var(--muted); }
+  /* Dummy elements needed by voice.js */
+  #dummy { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Kitchen Radio: Voice Test Harness</h1>
+    <p>Tests offline speech recognition, wake word detection ("Kishori" / "Kishori Maa"), silent check over music, and command matching using test audio recordings.</p>
+  </div>
+
+  <div class="actions">
+    <button id="btnRunAll">Run All Tests</button>
+    <label class="btn sec" for="fileInput">Test a WAV File</label>
+    <input type="file" id="fileInput" accept="audio/wav,audio/*">
+  </div>
+
+  <div id="status">Status: Ready</div>
+  <div id="log">Ready to run tests.</div>
+  <ol id="testList"></ol>
+</main>
+
+<div id="dummy">
+  <button id="btnMic"></button>
+  <div id="voiceHint"></div>
+  <div id="listenLevel"></div>
+  <div id="listenHeard"></div>
+  <div id="listenHint"></div>
+  <div id="listen" hidden></div>
+</div>
+
+<script>
+// Mock minimal environment for voice.js
+const cfg = {
+  volume: 60,
+  voice: { enabled: true, echo: true },
+  moods: [
+    { id: 'brindavan', name: 'Brindavan Bhajans', say: 'krishna, radha, bah jan', list: 'PL1' },
+    { id: 'melody', name: 'Bollywood Melody', say: 'melody, bollywood, hindi, ari jay', list: 'PL2' },
+  ],
+};
+let isPlaying = false;
+let alarmTimer = null;
+let currentMood = cfg.moods[0];
+let player = { nextVideo: () => log('player.nextVideo()'), previousVideo: () => log('player.previousVideo()') };
+let timers = [];
+function setVolume(v) { log('setVolume: ' + v); }
+function addTimer(n) { log('addTimer: ' + n); }
+function saveTimers() {}
+function renderTimers() {}
+function playMood(m) { log('playMood: ' + m.name); }
+function pickJustPlay() { return cfg.moods[0]; }
+function stopMusic() { log('stopMusic()'); }
+function togglePlay() { log('togglePlay()'); }
+function startShuffled() { log('startShuffled()'); }
+function dismissAlarm() { log('dismissAlarm()'); }
+function fadeTo(target, ms) { log(`fadeTo(${target}, ${ms})`); }
+function setSleepTimer(n) { log(`setSleepTimer(${n})`); }
+function clearSleepTimer() { log('clearSleepTimer()'); }
+let sleepTimerEnd = null;
+
+const $ = (s) => document.querySelector(s);
+function log(msg) {
+  const el = $('#log');
+  el.textContent += '\n' + msg;
+  el.scrollTop = el.scrollHeight;
+}
+</script>
+<script src="voice.js"></script>
+<script>
+'use strict';
+
+const TESTS = [
+  { file: '_test/c01_rishi_play_music.wav', desc: 'Positive: play music (Rishi)', expWake: 'plain', expCmd: 'play music', music: false },
+  { file: '_test/c02_tara_next_song.wav', desc: 'Positive: next song (Tara)', expWake: 'plain', expCmd: 'next song', music: false },
+  { file: '_test/c03_aman_pause.wav', desc: 'Positive: pause (Aman)', expWake: 'plain', expCmd: 'pause', music: false },
+  { file: '_test/c04_samantha_volume_up.wav', desc: 'Positive: volume up (Samantha)', expWake: 'plain', expCmd: 'volume up', music: false },
+  { file: '_test/c05_rishi_timer_5min.wav', desc: 'Positive: timer 5 min (Rishi)', expWake: 'plain', expCmd: 'timer for five minutes', music: false },
+  { file: '_test/c06_tara_sleep_timer_15min.wav', desc: 'Positive: sleep timer 15m (Tara)', expWake: 'plain', expCmd: 'stop music in fifteen minutes', music: false },
+  { file: '_test/c07_aman_what_time.wav', desc: 'Positive: what time is it (Aman)', expWake: 'plain', expCmd: 'what time is it', music: false },
+  { file: '_test/c08_rishi_cancel_timer.wav', desc: 'Positive: cancel timer (Rishi)', expWake: 'plain', expCmd: 'cancel timer', music: false },
+  { file: '_test/c09_tara_play_melody.wav', desc: 'Positive: play melody (Tara)', expWake: 'plain', expCmd: ['play melody', 'melody'], music: false },
+  { file: '_test/c10_rishi_shuffle.wav', desc: 'Positive: shuffle (Rishi)', expWake: 'plain', expCmd: 'shuffle', music: false },
+  { file: '_test/m01_tara_kishori_maa_next.wav', desc: 'Kishori Maa over music: next song (Tara)', expWake: 'strong', expCmd: 'next song', music: true },
+  { file: '_test/m02_rishi_kishori_maa_pause.wav', desc: 'Kishori Maa over music: pause (Rishi)', expWake: 'strong', expCmd: 'pause', music: true },
+  { file: '_test/m03_aman_kishori_maa_louder.wav', desc: 'Kishori Maa over music: louder (Aman)', expWake: 'strong', expCmd: 'louder', music: true },
+  { file: '_test/k01_aman_plain_kishori_alone.wav', desc: 'Plain Kishori alone over music (silent check, no cmd)', expWake: 'plain', expCmd: null, music: true },
+  { file: '_test/x01_rishi_chatter_after_wake.wav', desc: 'Chatter after wake word (no cmd)', expWake: 'plain', expCmd: null, music: false },
+  { file: '_test/b01_lekha_bhajan_kishori.wav', desc: 'Bhajan line singing Kishori (no cmd)', expWake: 'plain_or_none', expCmd: null, music: true },
+  { file: '_test/b02_lekha_bhajan_radha.wav', desc: 'Bhajan line with no wake word', expWake: null, expCmd: null, music: false },
+  { file: '_test/h01_lekha_hindi_talk.wav', desc: 'Hindi kitchen chatter (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/h02_lekha_arijit_lyrics.wav', desc: 'Arijit Singh lyrics (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/t01_vani_tamil_talk.wav', desc: 'Tamil kitchen chatter 1 (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/t02_vani_tamil_talk2.wav', desc: 'Tamil kitchen chatter 2 (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/e01_samantha_kitchen_chatter.wav', desc: 'English kitchen chatter 1 (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/e02_tara_kitchen_chatter.wav', desc: 'English kitchen chatter 2 (no wake)', expWake: null, expCmd: null, music: false },
+  { file: '_test/a01_tara_stop_alarm.wav', desc: 'Alarm dismiss by plain stop (Tara)', expWake: null, expAction: 'alarm_dismissed', alarm: true },
+];
+
+const listEl = $('#testList');
+listEl.innerHTML = TESTS.map((t, i) => `
+  <li id="item-${i}">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>${t.desc}</b>
+      <span class="badge wait" id="badge-${i}">Pending</span>
+    </div>
+    <div style="font-size:13px;color:var(--muted)" id="detail-${i}">${t.file}</div>
+  </li>
+`).join('');
+
+async function runTestCase(t, i) {
+  const badge = $(`#badge-${i}`);
+  const detail = $(`#detail-${i}`);
+  badge.className = 'badge run'; badge.textContent = 'Running…';
+  isPlaying = !!t.music;
+  alarmTimer = t.alarm ? 123 : null;
+
+  try {
+    const res = await window.voiceTestFile(t.file);
+    const wakeOk = t.expWake === 'plain_or_none' ? (res.wake === 'plain' || res.wake === null) : (res.wake === t.expWake);
+    let cmdOk = false;
+    if (t.expAction) {
+      cmdOk = res.action === t.expAction;
+    } else if (Array.isArray(t.expCmd)) {
+      cmdOk = t.expCmd.includes(res.command);
+    } else {
+      cmdOk = res.command === (t.expCmd || null);
+    }
+
+    const pass = wakeOk && cmdOk;
+    badge.className = pass ? 'badge ok' : 'badge bad';
+    badge.textContent = pass ? 'PASS' : 'FAIL';
+    detail.textContent = `Wake: ${res.wake || 'none'} (expected: ${t.expWake ?? 'none'}) | Cmd: ${res.command || res.action || 'none'} (expected: ${t.expCmd || t.expAction || 'none'})`;
+    return pass;
+  } catch (err) {
+    badge.className = 'badge bad'; badge.textContent = 'ERROR';
+    detail.textContent = err.message;
+    return false;
+  }
+}
+
+$('#btnRunAll').onclick = async () => {
+  $('#btnRunAll').disabled = true;
+  $('#status').textContent = 'Status: Loading voice model…';
+  log('Starting test suite…');
+  ensureAudio();
+
+  let passed = 0;
+  for (let i = 0; i < TESTS.length; i++) {
+    $('#status').textContent = `Status: Running test ${i + 1} of ${TESTS.length}…`;
+    const ok = await runTestCase(TESTS[i], i);
+    if (ok) passed++;
+  }
+  $('#status').textContent = `Status: Completed. ${passed} / ${TESTS.length} passed.`;
+  $('#btnRunAll').disabled = false;
+};
+
+$('#fileInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  $('#status').textContent = `Status: Testing ${file.name}…`;
+  log(`Testing custom file: ${file.name}`);
+  ensureAudio();
+  const res = await window.voiceTestFile(url);
+  log(`Result for ${file.name}: Wake=${res.wake} Cmd=${res.command} Action=${res.action} Mode=${res.mode}`);
+  $('#status').textContent = `Done: Wake=${res.wake || 'none'}, Cmd=${res.command || 'none'}`;
+};
+</script>
+</body>
+</html>
