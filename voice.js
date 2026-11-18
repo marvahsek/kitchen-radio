@@ -92,6 +92,33 @@ function buildCommands() {
     if (!timers.length) return reply('There are no timers');
     timers = []; saveTimers(); renderTimers(); reply('Timers cancelled');
   });
+
+  const SLEEP_FORMS = [
+    'stop music in {n} minutes', 'stop music in {n} minute',
+    'stop the music in {n} minutes', 'stop the music in {n} minute',
+    'stop music after {n} minutes', 'stop music after {n} minute',
+    'stop the music after {n} minutes', 'stop the music after {n} minute',
+    'stop playing in {n} minutes', 'stop playing in {n} minute',
+    'stop playing after {n} minutes', 'stop playing after {n} minute',
+    'turn off music in {n} minutes', 'turn off the music in {n} minutes',
+    'sleep timer {n} minutes', 'sleep timer for {n} minutes',
+    'set sleep timer {n} minutes', 'set sleep timer for {n} minutes',
+  ];
+  for (const [word, n] of Object.entries(NUM_WORDS)) {
+    add(SLEEP_FORMS.map((f) => f.replace('{n}', word)), () => {
+      setSleepTimer(n);
+      reply(`Sleep timer set for ${n} minute${n === 1 ? '' : 's'}`);
+    });
+  }
+  add(['stop music in half an hour', 'stop music after half an hour', 'stop the music in half an hour', 'stop the music after half an hour'], () => {
+    setSleepTimer(30);
+    reply('Sleep timer set for 30 minutes');
+  });
+  add(['cancel sleep timer', 'cancel the sleep timer', 'stop sleep timer', 'stop the sleep timer', 'turn off sleep timer'], () => {
+    if (!sleepTimerEnd) return reply('There is no sleep timer');
+    clearSleepTimer(true);
+    reply('Sleep timer cancelled');
+  });
   add(['what time is it', 'what is the time', 'tell me the time'], () => {
     const d = new Date();
     reply(`It's ${d.getHours() % 12 || 12} ${String(d.getMinutes()).padStart(2, '0')} ${d.getHours() < 12 ? 'A M' : 'P M'}`);
@@ -270,9 +297,14 @@ function onWakeResult(res) {
   voice.wakeSeenAt = 0;
   if (voice.mode !== 'idle' || performance.now() < voice.cooldownUntil) return;
   // While a timer is ringing, a plain "stop" is enough.
-  if (alarmTimer && (res.result || []).some((w) => ['stop', 'okay', 'ok', 'enough'].includes(w.word) && w.conf >= 0.7)) { dismissAlarm(); return; }
+  if (alarmTimer && (res.result || []).some((w) => ['stop', 'okay', 'ok', 'enough'].includes(w.word) && w.conf >= 0.7)) {
+    voice.lastAction = 'alarm_dismissed';
+    dismissAlarm();
+    return;
+  }
   const kind = findWake(res);
   if (!kind) return;
+  voice.lastWakeKind = kind;
   if (kind === 'plain' && isPlaying) startChecking();
   else startListening();
 }
@@ -371,6 +403,8 @@ function checkListening() {
 
 function runCommand(cmd) {
   const fn = voice.commands.get(cmd);
+  voice.lastExecutedCommand = cmd;
+  voice.lastAction = 'command_executed';
   stopListening(true);
   chime(true, true);
   try { fn(); } catch (e) { console.error(e); }
@@ -402,6 +436,9 @@ $('#listen').onclick = () => stopListening(false, true);
 // For testing on a computer: plays a recording through the same path as the microphone.
 window.voiceTestFile = async (url) => {
   if (!voice.model) await voiceStart({ noMic: true });
+  voice.lastExecutedCommand = null;
+  voice.lastWakeKind = null;
+  voice.lastAction = null;
   const buf = await actx.decodeAudioData(await (await fetch(url)).arrayBuffer());
   const ch = buf.getChannelData(0), step = 4096, pause = new Float32Array(step);
   const chunks = [];
@@ -411,6 +448,12 @@ window.voiceTestFile = async (url) => {
   for (const c of chunks) { onAudio(c); await wait(); }
   // Like a quiet room: keep sending silence until any listening window has closed.
   for (let i = 0; voice.mode !== 'idle' && i < 250; i++) { onAudio(pause); await wait(); }
+  return {
+    wake: voice.lastWakeKind,
+    command: voice.lastExecutedCommand,
+    action: voice.lastAction,
+    mode: voice.mode,
+  };
 };
 
 setVoiceState('off');

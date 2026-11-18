@@ -42,6 +42,7 @@
   .date { color: var(--muted); font-size: 15px; margin-top: 2px; }
   .tools { grid-area: tools; display: flex; gap: 10px; align-self: start; }
   .iconbtn { width: 50px; height: 50px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 22px; flex: none; }
+  .iconbtn.sleep-active { width: auto; min-width: 54px; padding: 0 12px; border-radius: 999px; background: var(--panel2); border: 1.5px solid var(--accent); color: var(--accent); font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
   .vhint { flex-basis: 100%; color: var(--accent); font-size: 15px; font-weight: 600; min-height: 1.2em; }
   .mic-off { opacity: .45; }
   .mic-ready { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 55%, transparent); }
@@ -175,6 +176,7 @@
     .vhint { grid-column: 2; align-self: start; }
     .tools { align-self: center; }
     .iconbtn { width: 46px; height: 46px; font-size: 20px; }
+    .iconbtn.sleep-active { min-width: 48px; height: 46px; font-size: 14px; padding: 0 10px; }
 
     #moods { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); min-height: 0; gap: 8px; }
     .mood { min-height: 0; padding: 8px 12px; border-radius: 14px; }
@@ -183,15 +185,15 @@
     .mood .emoji { font-size: 22px; top: 7px; right: 9px; }
 
     #timers { background: none; padding: 0; display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
-    /* Room for four quick timers; any other length is a voice command away. */
-    #timers h2, #timers .custom, .chip[data-m="2"], .chip[data-m="15"], .chip[data-m="20"], .chip[data-m="30"] { display: none; }
+    /* Room for four quick timers (3, 5, 10, 15m); any other length is a voice command away. */
+    #timers h2, #timers .custom, .chip[data-m="1"], .chip[data-m="2"], .chip[data-m="20"], .chip[data-m="30"] { display: none; }
     #timers { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
     .tq { flex-wrap: nowrap; gap: 6px; }
     .chip { width: 50px; padding: 11px 0; font-size: 15px; flex: none; }
     #timerList { order: -1; display: flex; gap: 6px; margin: 0 !important; }
     .timer { border: 0; padding: 4px 4px 4px 14px; background: var(--panel2); border-radius: 999px; gap: 6px; flex: none; overflow: hidden; }
     .timer .rem { font-size: 22px; min-width: 0; }
-    .timer .lbl, .timer button:first-of-type { display: none; }
+    .timer .lbl { display: none; }
     .timer button { width: 36px; height: 36px; }
 
     #now { display: flex; flex-direction: column; justify-content: space-between; padding: 12px; min-height: 0; }
@@ -220,6 +222,7 @@
   </header>
 
   <div class="tools">
+    <button class="iconbtn" id="btnSleep" aria-label="Sleep timer">🌙</button>
     <button class="iconbtn" id="btnMic" aria-label="Voice">🎙️</button>
     <button class="iconbtn" id="btnSettings" aria-label="Settings">⚙️</button>
   </div>
@@ -320,7 +323,8 @@
 
     <h2>Moods &amp; playlists</h2>
     <p class="hint">In YouTube Music, open a playlist → Share → Copy link, then paste it here.
-      Set the playlist to <b>Public</b> or <b>Unlisted</b>. Private playlists and “Liked music” won’t play outside YouTube.</p>
+      Set the playlist to <b>Public</b> or <b>Unlisted</b>. Private playlists and “Liked music” won’t play outside YouTube.
+      Prefer <b>Song versions</b> (static cover art) over music videos.</p>
     <div id="sMoods" style="display:grid;gap:10px"></div>
     <button type="button" class="btn" id="sAdd">+ Add a mood</button>
 
@@ -330,7 +334,8 @@
     <label class="check"><input type="checkbox" id="sEcho"> Echo cancellation: helps it hear her over the music. On some phones it puts the
       phone into call-style audio and YouTube won’t play; then it turns itself off. Also turn it off if the music sounds thin or quiet.</label>
     <p class="hint">Voice words for each mood must be plain English sound-alikes the phone knows:
-      “mara thi” for Marathi, “vee jay” for Vijay, “bah jan” for bhajan, “ari jay” for Arijit.</p>
+      “mara thi” for Marathi, “vee jay” for Vijay, “bah jan” for bhajan, “ari jay” for Arijit.
+      Voice commands are in English (Tamil voice commands are not supported by this offline model).</p>
 
     <h2>“Just play” picks</h2>
     <div class="grid2" id="sSchedule"></div>
@@ -749,6 +754,89 @@ function dismissAlarm() {
   fadeTo(1, 1500);
 }
 
+/* ---------- sleep timer ---------- */
+
+const SLEEP_STEPS = [15, 30, 45, 60];
+let sleepTimerEnd = null, sleepTimerTotal = null;
+
+function saveSleepTimer() {
+  store.set('sleepTimer', sleepTimerEnd ? { end: sleepTimerEnd, total: sleepTimerTotal } : null);
+}
+
+function updateSleepUI() {
+  const btn = $('#btnSleep');
+  if (!btn) return;
+  if (!sleepTimerEnd) {
+    btn.className = 'iconbtn';
+    btn.innerHTML = '🌙';
+    btn.setAttribute('aria-label', 'Sleep timer off. Tap to set 15m');
+    return;
+  }
+  const left = Math.max(0, sleepTimerEnd - Date.now());
+  const min = Math.ceil(left / 60000);
+  btn.className = 'iconbtn sleep-active';
+  btn.innerHTML = `🌙 ${min > 1 ? min + 'm' : Math.max(1, Math.ceil(left / 1000)) + 's'}`;
+  btn.setAttribute('aria-label', `Sleep timer: ${min} minutes remaining. Tap to cycle`);
+}
+
+function setSleepTimer(min) {
+  if (!(min > 0)) { clearSleepTimer(); return; }
+  sleepTimerTotal = min;
+  sleepTimerEnd = Date.now() + min * 60000;
+  saveSleepTimer();
+  updateSleepUI();
+  toast(`Music will stop in ${min} min`);
+}
+
+function clearSleepTimer(silent = false) {
+  sleepTimerEnd = null;
+  sleepTimerTotal = null;
+  saveSleepTimer();
+  updateSleepUI();
+  if (!silent) toast('Sleep timer cancelled');
+}
+
+function cycleSleepTimer() {
+  if (!sleepTimerEnd) {
+    setSleepTimer(15);
+  } else {
+    const leftMin = Math.round((sleepTimerEnd - Date.now()) / 60000);
+    let next = null;
+    for (const step of SLEEP_STEPS) {
+      if (step > leftMin + 1) { next = step; break; }
+    }
+    if (next) setSleepTimer(next);
+    else clearSleepTimer();
+  }
+}
+
+function tickSleepTimer() {
+  if (!sleepTimerEnd) return;
+  const left = sleepTimerEnd - Date.now();
+  if (left <= 0) {
+    clearSleepTimer(true);
+    if (isPlaying || wantPlaying) {
+      fadeTo(0, 10000, () => {
+        wantPlaying = false;
+        player?.pauseVideo?.();
+        duckFactor = 1;
+        applyVolume();
+      });
+      toast('Sleep timer: music paused');
+    }
+  } else {
+    updateSleepUI();
+  }
+}
+
+const savedSleep = store.get('sleepTimer', null);
+if (savedSleep && savedSleep.end > Date.now()) {
+  sleepTimerEnd = savedSleep.end;
+  sleepTimerTotal = savedSleep.total || Math.ceil((sleepTimerEnd - Date.now()) / 60000);
+} else if (savedSleep) {
+  store.set('sleepTimer', null);
+}
+
 /* ---------- screen: wake lock, dimming, burn-in shift, auto-stop ---------- */
 
 let started = false, lastTouch = Date.now(), wakeLock = null;
@@ -772,13 +860,20 @@ setInterval(() => {
 
 /* ---------- settings ---------- */
 
+const MAX_MOODS = 8;
 let draft = null;
 const dlg = $('#settings');
 
 function parseList(s) {
   s = (s || '').trim();
   if (!s) return '';
-  try { const l = new URL(s).searchParams.get('list'); if (l) return l; } catch {}
+  try {
+    const u = new URL(s.startsWith('http') ? s : 'https://' + s);
+    const l = u.searchParams.get('list');
+    if (l) return l;
+  } catch {}
+  const m = s.match(/[?&]list=([A-Za-z0-9_-]{10,})/);
+  if (m) return m[1];
   return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : '';
 }
 function checkRow(row) {
@@ -786,7 +881,7 @@ function checkRow(row) {
   const id = parseList(v);
   msg.className = 's-msg';
   if (!v) msg.textContent = '';
-  else if (id === 'LM') { msg.textContent = '“Liked music” can’t play outside YouTube. Copy the songs into a normal playlist.'; msg.classList.add('bad'); }
+  else if (id === 'LM' || /[?&]list=LM\b/.test(v)) { msg.textContent = '“Liked music” can’t play outside YouTube. Copy the songs into a normal playlist.'; msg.classList.add('bad'); }
   else if (id) { msg.textContent = '✓ Playlist link looks good'; msg.classList.add('ok'); }
   else { msg.textContent = 'That doesn’t look like a playlist link'; msg.classList.add('bad'); }
 }
@@ -832,10 +927,12 @@ function renderSettings(focusId) {
     row.querySelector('.s-list').addEventListener('input', () => checkRow(row));
     row.querySelector('.s-del').onclick = () => {
       syncDraft();
+      if (draft.moods.length <= 1) { toast('You must keep at least one mood'); return; }
       draft.moods.splice(+row.dataset.i, 1);
       renderSettings();
     };
   });
+  $('#sAdd').hidden = draft.moods.length >= MAX_MOODS;
   $('#sSchedule').innerHTML = SLOTS.map(([k, label]) => `
     <div class="field"><label>${label}</label>
       <select name="${k}">${draft.moods.map((m) => `<option value="${esc(m.id)}"${draft.schedule[k] === m.id ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
@@ -856,6 +953,7 @@ function openSettings(focusId) {
 
 $('#sAdd').onclick = () => {
   syncDraft();
+  if (draft.moods.length >= MAX_MOODS) { toast('Maximum 8 moods reached'); return; }
   draft.moods.push({ id: 'm' + Date.now(), emoji: '🎵', color: COLORS[draft.moods.length % COLORS.length], name: 'New mood', sub: '', say: '', url: '', list: '' });
   renderSettings(draft.moods.at(-1).id);
 };
@@ -890,6 +988,7 @@ $('#sReset').onclick = () => {
 /* ---------- wiring ---------- */
 
 $('#btnSettings').onclick = () => openSettings();
+$('#btnSleep').onclick = cycleSleepTimer;
 $('#btnPlay').onclick = togglePlay;
 $('#btnStop').onclick = stopMusic;
 $('#btnNext').onclick = () => playerReady && currentMood && player.nextVideo();
@@ -914,10 +1013,12 @@ $('#start').onclick = () => {
 tickClock();
 renderMoods();
 renderTimers();
+updateSleepUI();
 applyVolume();
 loadYouTube();
 setInterval(tickClock, 1000);
 setInterval(tickTimers, 250);
+setInterval(tickSleepTimer, 1000);
 </script>
 <script src="voice.js"></script>
 </body>
